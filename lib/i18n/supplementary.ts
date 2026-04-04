@@ -58,6 +58,10 @@ export const supplementaryZhCN = {
       exportFailed: '导出失败',
       regenerate: '重新生成',
     },
+    custom: {
+      generate: '生成',
+      generating: '正在生成...',
+    },
   },
 } as const;
 
@@ -120,6 +124,10 @@ export const supplementaryEnUS = {
       exportSuccess: 'Export successful',
       exportFailed: 'Export failed',
       regenerate: 'Regenerate',
+    },
+    custom: {
+      generate: 'Generate',
+      generating: 'Generating...',
     },
   },
 } as const;

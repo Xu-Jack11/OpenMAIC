@@ -224,7 +224,7 @@ export function FilesSidebar() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
-                        {t(`${plugin.i18nPrefix}.title`)}
+                        {plugin.displayName || t(`${plugin.i18nPrefix}.title`)}
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {getStatusIcon(status)}

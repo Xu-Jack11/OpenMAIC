@@ -112,8 +112,10 @@ export function PluginDialog({ plugin, onClose }: PluginDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
-        <DialogTitle>{t(`${plugin.i18nPrefix}.title`)}</DialogTitle>
-        <DialogDescription>{t(`${plugin.i18nPrefix}.description`)}</DialogDescription>
+        <DialogTitle>{plugin.displayName || t(`${plugin.i18nPrefix}.title`)}</DialogTitle>
+        <DialogDescription>
+          {plugin.displayDescription || t(`${plugin.i18nPrefix}.description`)}
+        </DialogDescription>
 
         {loadingCache && (
           <div className="flex items-center justify-center gap-2 py-8 text-gray-500">
@@ -123,14 +125,22 @@ export function PluginDialog({ plugin, onClose }: PluginDialogProps) {
 
         {data === null && !generating && !loadingCache && (
           <div className="flex justify-center py-8">
-            <Button onClick={handleGenerate}>{t(`${plugin.i18nPrefix}.generate`)}</Button>
+            <Button onClick={handleGenerate}>
+              {plugin.isCustom
+                ? t('supplementary.custom.generate')
+                : t(`${plugin.i18nPrefix}.generate`)}
+            </Button>
           </div>
         )}
 
         {generating && (
           <div className="flex items-center justify-center gap-2 py-8 text-gray-500">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span>{t(`${plugin.i18nPrefix}.generating`)}</span>
+            <span>
+              {plugin.isCustom
+                ? t('supplementary.custom.generating')
+                : t(`${plugin.i18nPrefix}.generating`)}
+            </span>
           </div>
         )}
 
