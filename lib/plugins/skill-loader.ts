@@ -5,9 +5,7 @@
  *   import '@/lib/plugins/skill-loader';
  */
 
-import * as icons from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-
+import { resolveIcon } from './icon-resolver';
 import { registerPlugin } from './registry';
 import { getModelHeaders } from '@/lib/utils/model-config';
 import { summarizeScenes } from '@/lib/utils/scene-summary';
@@ -48,14 +46,6 @@ const CONVERTER_MAP: Record<
   'reading-converter': (data, locale) =>
     convertReadingToDocument(data as Parameters<typeof convertReadingToDocument>[0], locale),
 };
-
-// ── Icon resolver ──
-function resolveIcon(name: string): LucideIcon {
-  const icon = (icons as Record<string, unknown>)[name];
-  if (typeof icon === 'function') return icon as LucideIcon;
-  // Fallback
-  return icons.Puzzle;
-}
 
 // ── Variable resolver ──
 function resolveVariables(

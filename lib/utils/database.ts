@@ -190,8 +190,26 @@ export function mediaFileKey(stageId: string, elementId: string): string {
 
 // ==================== Database Definition ====================
 
+/**
+ * UserSkill table - User-created custom skills stored in IndexedDB
+ */
+export interface UserSkillRecord {
+  id: string; // PK: 'custom-{nanoid}'
+  name: string;
+  description: string;
+  icon: string;
+  systemPrompt: string;
+  userPrompt: string;
+  variables: string; // JSON-serialized UserSkillVariable[]
+  responseKey: string;
+  supportedFormats: string; // JSON-serialized ExportFormat[]
+  guidance?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 const DATABASE_NAME = 'MAIC-Database';
-const _DATABASE_VERSION = 8;
+const _DATABASE_VERSION = 10;
 
 /**
  * MAIC Database Instance
@@ -209,6 +227,7 @@ class MAICDatabase extends Dexie {
   mediaFiles!: EntityTable<MediaFileRecord, 'id'>;
   generatedAgents!: EntityTable<GeneratedAgentRecord, 'id'>;
   pluginResults!: EntityTable<PluginResultRecord, 'id'>;
+  userSkills!: EntityTable<UserSkillRecord, 'id'>;
 
   constructor() {
     super(DATABASE_NAME);
@@ -340,6 +359,22 @@ class MAICDatabase extends Dexie {
       mediaFiles: 'id, stageId, [stageId+type]',
       generatedAgents: 'id, stageId',
       pluginResults: 'id, stageId, pluginId',
+    });
+
+    // Version 10: Add userSkills table for user-created custom skills
+    this.version(10).stores({
+      stages: 'id, updatedAt',
+      scenes: 'id, stageId, order, [stageId+order]',
+      audioFiles: 'id, createdAt',
+      imageFiles: 'id, createdAt',
+      snapshots: '++id',
+      chatSessions: 'id, stageId, [stageId+createdAt]',
+      playbackState: 'stageId',
+      stageOutlines: 'stageId',
+      mediaFiles: 'id, stageId, [stageId+type]',
+      generatedAgents: 'id, stageId',
+      pluginResults: 'id, stageId, pluginId',
+      userSkills: 'id, updatedAt',
     });
   }
 }
@@ -512,5 +547,31 @@ export async function savePluginResult(
     pluginId,
     data: JSON.stringify(data),
     createdAt: Date.now(),
+  });
+}
+
+// ==================== User Skill Helpers ====================
+
+/**
+ * Get all user-created custom skills
+ */
+export async function getUserSkills(): Promise<UserSkillRecord[]> {
+  return db.userSkills.orderBy('updatedAt').reverse().toArray();
+}
+
+/**
+ * Save (create or update) a user skill
+ */
+export async function saveUserSkill(record: UserSkillRecord): Promise<void> {
+  await db.userSkills.put(record);
+}
+
+/**
+ * Delete a user skill and its cached plugin results
+ */
+export async function deleteUserSkill(skillId: string): Promise<void> {
+  await db.transaction('rw', [db.userSkills, db.pluginResults], async () => {
+    await db.userSkills.delete(skillId);
+    await db.pluginResults.where('pluginId').equals(skillId).delete();
   });
 }

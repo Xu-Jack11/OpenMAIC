@@ -18,7 +18,9 @@ export type PromptId =
   | 'pbl-actions'
   | 'handout'
   | 'experiment-design'
-  | 'extended-reading';
+  | 'extended-reading'
+  | 'skill-from-description'
+  | 'skill-from-template';
 
 /**
  * Snippet identifier

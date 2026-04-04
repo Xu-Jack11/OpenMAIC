@@ -24,4 +24,10 @@ export interface GenerationPlugin {
   /** Optional: return guidance text to inject into outline generation prompt.
    *  Should be 1-2 concise sentences describing how outlines should accommodate this plugin. */
   getOutlineGuidance?: (language: string) => string | null;
+  /** Direct display name (bypasses i18n). Used by user-defined custom skills. */
+  displayName?: string;
+  /** Direct display description (bypasses i18n). Used by user-defined custom skills. */
+  displayDescription?: string;
+  /** Whether this is a user-created custom skill */
+  isCustom?: boolean;
 }
