@@ -16,10 +16,14 @@ import { useTheme } from '@/lib/hooks/use-theme';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SettingsDialog } from './settings';
+import { PluginDialog } from './supplementary/plugin-dialog';
 import { cn } from '@/lib/utils';
 import { useStageStore } from '@/lib/store/stage';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
+import '@/lib/plugins/built-in';
+import { getPlugins } from '@/lib/plugins/registry';
+import type { GenerationPlugin } from '@/lib/plugins/types';
 
 interface HeaderProps {
   readonly currentSceneTitle: string;
@@ -32,6 +36,7 @@ export function Header({ currentSceneTitle }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [activePlugin, setActivePlugin] = useState<GenerationPlugin | null>(null);
 
   // Export
   const { exporting: isExporting, exportPPTX, exportResourcePack } = useExportPPTX();
@@ -73,6 +78,8 @@ export function Header({ currentSceneTitle }: HeaderProps) {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [languageOpen, themeOpen, exportMenuOpen, handleClickOutside]);
+
+  const plugins = getPlugins();
 
   return (
     <>
@@ -272,11 +279,38 @@ export function Header({ currentSceneTitle }: HeaderProps) {
                   </div>
                 </div>
               </button>
+              {plugins.length > 0 && (
+                <>
+                  <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                  {plugins.map((plugin) => {
+                    const Icon = plugin.icon;
+                    return (
+                      <button
+                        key={plugin.id}
+                        onClick={() => {
+                          setExportMenuOpen(false);
+                          setActivePlugin(plugin);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2.5"
+                      >
+                        <Icon className="w-4 h-4 text-gray-400 shrink-0" />
+                        <div>
+                          <div>{t(`${plugin.i18nPrefix}.title`)}</div>
+                          <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                            {t(`${plugin.i18nPrefix}.description`)}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
         </div>
       </header>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <PluginDialog plugin={activePlugin} onClose={() => setActivePlugin(null)} />
     </>
   );
 }

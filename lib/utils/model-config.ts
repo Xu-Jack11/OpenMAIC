@@ -21,3 +21,18 @@ export function getCurrentModelConfig() {
     isServerConfigured: providerConfig?.isServerConfigured,
   };
 }
+
+/**
+ * Build model-related HTTP headers for API requests
+ */
+export function getModelHeaders(): HeadersInit {
+  const config = getCurrentModelConfig();
+  return {
+    'Content-Type': 'application/json',
+    'x-model': config.modelString || '',
+    'x-api-key': config.apiKey || '',
+    'x-base-url': config.baseUrl || '',
+    'x-provider-type': config.providerType || '',
+    'x-requires-api-key': String(config.requiresApiKey ?? false),
+  };
+}
