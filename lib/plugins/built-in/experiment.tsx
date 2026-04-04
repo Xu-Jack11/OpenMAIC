@@ -37,4 +37,10 @@ registerPlugin({
   },
 
   PreviewComponent: ExperimentPreview,
+
+  getOutlineGuidance(language) {
+    return language === 'zh-CN'
+      ? '实验方案插件已启用。在涉及可实验验证的知识点时，请在 description 或 keyPoints 中提及实验方法或可观测现象。'
+      : 'Experiment plugin is enabled. When covering concepts that can be experimentally verified, mention experimental methods or observable phenomena in the description or keyPoints.';
+  },
 });

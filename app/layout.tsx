@@ -10,6 +10,8 @@ import { I18nProvider } from '@/lib/hooks/use-i18n';
 import { Toaster } from '@/components/ui/sonner';
 import { ServerProvidersInit } from '@/components/server-providers-init';
 
+import { SkillsInit } from '@/components/skills-init';
+
 const inter = localFont({
   src: '../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2',
   variable: '--font-sans',
@@ -36,6 +38,7 @@ export default function RootLayout({
         <ThemeProvider>
           <I18nProvider>
             <ServerProvidersInit />
+            <SkillsInit />
             {children}
             <Toaster position="top-center" />
           </I18nProvider>

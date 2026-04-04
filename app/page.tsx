@@ -299,6 +299,7 @@ function HomePage() {
         pdfProviderConfig,
         sceneOutlines: null,
         currentStep: 'generating' as const,
+        enabledPluginIds: useSettingsStore.getState().enabledPluginIds,
       };
       sessionStorage.setItem('generationSession', JSON.stringify(sessionState));
 

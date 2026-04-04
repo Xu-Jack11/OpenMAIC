@@ -40,4 +40,10 @@ registerPlugin({
   },
 
   PreviewComponent: HandoutPreview,
+
+  getOutlineGuidance(language) {
+    return language === 'zh-CN'
+      ? '讲义插件已启用。请确保每个 scene 的 keyPoints 清晰、结构化，便于整理为课后复习笔记。'
+      : 'Handout plugin is enabled. Ensure each scene has clear, well-structured keyPoints suitable for post-class review notes.';
+  },
 });

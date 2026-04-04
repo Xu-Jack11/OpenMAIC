@@ -21,4 +21,7 @@ export interface GenerationPlugin {
   toDocument: (data: unknown, locale: Locale) => ExportableDocument;
   /** Preview component rendered inside the dialog */
   PreviewComponent: React.ComponentType<{ data: unknown }>;
+  /** Optional: return guidance text to inject into outline generation prompt.
+   *  Should be 1-2 concise sentences describing how outlines should accommodate this plugin. */
+  getOutlineGuidance?: (language: string) => string | null;
 }

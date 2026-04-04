@@ -542,6 +542,7 @@ function GenerationPreviewContent() {
               imageMapping,
               researchContext: currentSession.researchContext,
               agents,
+              enabledPluginIds: settings.enabledPluginIds,
             }),
             signal,
           })

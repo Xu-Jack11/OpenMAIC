@@ -1,0 +1,23 @@
+id: handout
+icon: BookOpen
+i18nPrefix: supplementary.handout
+supportedFormats: [docx, pdf, markdown]
+
+guidance:
+  zh-CN: "讲义技能已启用。请确保每个 scene 的 keyPoints 清晰、结构化，便于整理为课后复习笔记。"
+  en-US: "Handout skill is enabled. Ensure each scene has clear, well-structured keyPoints suitable for post-class review notes."
+
+generation:
+  promptId: handout
+  variables:
+    stageName: stage.name
+    stageDescription: stage.description
+    language: stage.language
+    sceneData: sceneSummary
+  responseKey: handout
+
+preview:
+  component: handout-preview
+
+export:
+  converter: handout-converter

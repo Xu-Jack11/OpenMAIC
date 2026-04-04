@@ -1,0 +1,22 @@
+id: reading
+icon: Library
+i18nPrefix: supplementary.reading
+supportedFormats: [docx, pdf, markdown]
+
+guidance:
+  zh-CN: "课外阅读技能已启用。在知识密集的场景中，请在 keyPoints 中留出拓展阅读的切入点，例如提及相关背景知识或前沿发展。"
+  en-US: "Extended reading skill is enabled. In knowledge-dense scenes, include entry points for extended reading in keyPoints, such as related background knowledge or frontier developments."
+
+generation:
+  promptId: extended-reading
+  variables:
+    topic: stage.name
+    contentSummary: sceneSummary
+    language: stage.language
+  responseKey: reading
+
+preview:
+  component: reading-preview
+
+export:
+  converter: reading-converter

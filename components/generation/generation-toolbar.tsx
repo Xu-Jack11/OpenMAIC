@@ -21,6 +21,7 @@ import type { WebSearchProviderId } from '@/lib/web-search/types';
 import type { ProviderId } from '@/lib/ai/providers';
 import type { SettingsSection } from '@/lib/types/settings';
 import { MediaPopover } from '@/components/generation/media-popover';
+import { PluginToggles } from '@/components/generation/plugin-toggles';
 
 // ─── Constants ───────────────────────────────────────────────
 const MAX_PDF_SIZE_MB = 50;
@@ -370,6 +371,9 @@ export function GenerationToolbar({
         </TooltipTrigger>
         <TooltipContent>{t('toolbar.languageHint')}</TooltipContent>
       </Tooltip>
+
+      {/* ── Plugin toggles ── */}
+      <PluginToggles />
 
       {/* ── Separator ── */}
       <div className="w-px h-4 bg-border/60 mx-1" />

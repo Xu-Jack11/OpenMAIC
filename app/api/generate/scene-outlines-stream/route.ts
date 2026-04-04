@@ -13,6 +13,7 @@
 
 import { NextRequest } from 'next/server';
 import { streamLLM } from '@/lib/ai/llm';
+import { getPluginGuidance } from '@/lib/plugins/registry';
 import { buildPrompt, PROMPT_IDS } from '@/lib/generation/prompts';
 import {
   formatImageDescription,
@@ -110,13 +111,14 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Requirements are required');
     }
 
-    const { requirements, pdfText, pdfImages, imageMapping, researchContext, agents } = body as {
+    const { requirements, pdfText, pdfImages, imageMapping, researchContext, agents, enabledPluginIds } = body as {
       requirements: UserRequirements;
       pdfText?: string;
       pdfImages?: PdfImage[];
       imageMapping?: ImageMapping;
       researchContext?: string;
       agents?: AgentInfo[];
+      enabledPluginIds?: string[];
     };
     requirementSnippet = requirements?.requirement?.substring(0, 60);
 
@@ -176,6 +178,11 @@ export async function POST(req: NextRequest) {
     // Build teacher context from agents (if available)
     const teacherContext = formatTeacherPersonaForPrompt(agents);
 
+    // Build plugin guidance from enabled plugins
+    const pluginGuidance = enabledPluginIds?.length
+      ? getPluginGuidance(enabledPluginIds, requirements.language)
+      : '';
+
     const prompts = buildPrompt(PROMPT_IDS.REQUIREMENTS_TO_OUTLINES, {
       requirement: requirements.requirement,
       language: requirements.language,
@@ -188,6 +195,7 @@ export async function POST(req: NextRequest) {
       researchContext: researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
       mediaGenerationPolicy,
       teacherContext,
+      pluginGuidance,
     });
 
     if (!prompts) {

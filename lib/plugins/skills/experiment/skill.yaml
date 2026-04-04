@@ -1,0 +1,22 @@
+id: experiment
+icon: FlaskConical
+i18nPrefix: supplementary.experiment
+supportedFormats: [docx, pdf]
+
+guidance:
+  zh-CN: "实验方案技能已启用。在涉及可实验验证的知识点时，请在 description 或 keyPoints 中提及实验方法或可观测现象。"
+  en-US: "Experiment skill is enabled. When covering concepts that can be experimentally verified, mention experimental methods or observable phenomena in the description or keyPoints."
+
+generation:
+  promptId: experiment-design
+  variables:
+    topic: stage.name
+    contentSummary: sceneSummary
+    language: stage.language
+  responseKey: experiment
+
+preview:
+  component: experiment-preview
+
+export:
+  converter: experiment-converter

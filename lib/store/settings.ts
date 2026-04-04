@@ -146,6 +146,9 @@ export interface SettingsState {
   autoPlayLecture: boolean;
   playbackSpeed: PlaybackSpeed;
 
+  // Plugin settings
+  enabledPluginIds: string[];
+
   // Agent settings
   selectedAgentIds: string[];
   maxTurns: string;
@@ -166,6 +169,8 @@ export interface SettingsState {
   setTTSVolume: (volume: number) => void;
   setAutoPlayLecture: (autoPlay: boolean) => void;
   setPlaybackSpeed: (speed: PlaybackSpeed) => void;
+  setEnabledPluginIds: (ids: string[]) => void;
+  togglePlugin: (pluginId: string) => void;
   setSelectedAgentIds: (ids: string[]) => void;
   setMaxTurns: (turns: string) => void;
   setAgentMode: (mode: 'preset' | 'auto') => void;
@@ -547,6 +552,9 @@ export const useSettingsStore = create<SettingsState>()(
         agentMode: 'auto' as const,
         autoAgentCount: 3,
 
+        // Plugin settings (all enabled by default)
+        enabledPluginIds: ['handout', 'experiment', 'reading'],
+
         // Playback controls
         ttsMuted: false,
         ttsVolume: 1,
@@ -609,6 +617,13 @@ export const useSettingsStore = create<SettingsState>()(
 
         setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
 
+        setEnabledPluginIds: (ids) => set({ enabledPluginIds: ids }),
+        togglePlugin: (pluginId) =>
+          set((state) => ({
+            enabledPluginIds: state.enabledPluginIds.includes(pluginId)
+              ? state.enabledPluginIds.filter((id) => id !== pluginId)
+              : [...state.enabledPluginIds, pluginId],
+          })),
         setSelectedAgentIds: (ids) => set({ selectedAgentIds: ids }),
 
         setMaxTurns: (turns) => set({ maxTurns: turns }),
