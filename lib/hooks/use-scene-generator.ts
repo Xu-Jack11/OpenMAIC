@@ -12,6 +12,7 @@ import type { Action, SpeechAction } from '@/lib/types/action';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
+import { autoGeneratePlugins } from '@/lib/plugins/plugin-auto-generator';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('SceneGenerator');
@@ -405,6 +406,15 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           store.getState().setGenerationStatus('completed');
           store.getState().setGeneratingOutlines([]);
           options.onComplete?.();
+
+          // Auto-generate enabled plugins (fire-and-forget)
+          const { scenes: allScenes, stage: currentStage } = store.getState();
+          if (currentStage) {
+            const locale = (currentStage.language === 'en-US' ? 'en-US' : 'zh-CN') as 'zh-CN' | 'en-US';
+            autoGeneratePlugins(currentStage.id, allScenes, currentStage, locale).catch((err) => {
+              log.warn('Plugin auto-generation error:', err);
+            });
+          }
         }
       } catch (err: unknown) {
         // AbortError is expected when stop() is called — don't treat as failure

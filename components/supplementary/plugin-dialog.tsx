@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store/stage';
 import { useDocumentExport } from '@/lib/export/document/use-document-export';
+import { getPluginResult, savePluginResult } from '@/lib/utils/database';
 import type { ExportFormat } from '@/lib/export/document/types';
 import type { GenerationPlugin } from '@/lib/plugins/types';
 import type { Locale } from '@/lib/i18n';
@@ -29,6 +30,8 @@ export function PluginDialog({ plugin, onClose }: PluginDialogProps) {
   const [generating, setGenerating] = useState(false);
   const [data, setData] = useState<unknown>(null);
   const [format, setFormat] = useState<ExportFormat>('docx');
+  const [loadingCache, setLoadingCache] = useState(false);
+  const cacheCheckedRef = useRef<string | null>(null);
 
   const open = plugin !== null;
 
@@ -37,12 +40,38 @@ export function PluginDialog({ plugin, onClose }: PluginDialogProps) {
     return plugin.toDocument(data, locale as Locale);
   }, [data, plugin, locale]);
 
+  // Load cached result when dialog opens
   useEffect(() => {
-    if (!open) {
+    if (!open || !plugin) {
       setData(null);
       setGenerating(false);
+      setLoadingCache(false);
+      cacheCheckedRef.current = null;
+      return;
     }
-  }, [open]);
+
+    const stageId = useStageStore.getState().stage?.id;
+    if (!stageId) return;
+
+    // Avoid re-checking cache for the same plugin while dialog is open
+    const cacheKey = `${stageId}:${plugin.id}`;
+    if (cacheCheckedRef.current === cacheKey) return;
+    cacheCheckedRef.current = cacheKey;
+
+    setLoadingCache(true);
+    getPluginResult(stageId, plugin.id)
+      .then((cached) => {
+        if (cached !== null) {
+          setData(cached);
+        }
+      })
+      .catch(() => {
+        // Ignore cache load errors
+      })
+      .finally(() => {
+        setLoadingCache(false);
+      });
+  }, [open, plugin]);
 
   const handleGenerate = useCallback(async () => {
     if (!plugin) return;
@@ -61,6 +90,8 @@ export function PluginDialog({ plugin, onClose }: PluginDialogProps) {
     try {
       const result = await plugin.generate({ scenes, stage, locale: locale as Locale });
       setData(result);
+      // Update cache
+      await savePluginResult(stage.id, plugin.id, result);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(`${t('supplementary.common.generateFailed')}: ${message}`);
@@ -84,7 +115,13 @@ export function PluginDialog({ plugin, onClose }: PluginDialogProps) {
         <DialogTitle>{t(`${plugin.i18nPrefix}.title`)}</DialogTitle>
         <DialogDescription>{t(`${plugin.i18nPrefix}.description`)}</DialogDescription>
 
-        {data === null && !generating && (
+        {loadingCache && (
+          <div className="flex items-center justify-center gap-2 py-8 text-gray-500">
+            <Loader2 className="w-5 h-5 animate-spin" />
+          </div>
+        )}
+
+        {data === null && !generating && !loadingCache && (
           <div className="flex justify-center py-8">
             <Button onClick={handleGenerate}>{t(`${plugin.i18nPrefix}.generate`)}</Button>
           </div>

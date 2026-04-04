@@ -939,7 +939,15 @@ export function Stage({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
         {/* Header */}
-        {!isPresenting && <Header currentSceneTitle={currentScene?.title || ''} />}
+        {!isPresenting && (
+          <Header
+            currentSceneTitle={currentScene?.title || ''}
+            onOpenFiles={() => {
+              if (chatAreaCollapsed) setChatAreaCollapsed(false);
+              chatAreaRef.current?.switchToTab('files');
+            }}
+          />
+        )}
 
         {/* Canvas Area */}
         <div

@@ -167,6 +167,22 @@ export interface GeneratedAgentRecord {
   createdAt: number;
 }
 
+/**
+ * PluginResult table - Cached plugin generation results
+ */
+export interface PluginResultRecord {
+  id: string; // PK: `${stageId}:${pluginId}`
+  stageId: string; // FK -> stages.id
+  pluginId: string;
+  data: string; // JSON-serialized plugin result
+  createdAt: number;
+}
+
+/** Build the compound primary key for pluginResults */
+export function pluginResultKey(stageId: string, pluginId: string): string {
+  return `${stageId}:${pluginId}`;
+}
+
 /** Build the compound primary key for mediaFiles: `${stageId}:${elementId}` */
 export function mediaFileKey(stageId: string, elementId: string): string {
   return `${stageId}:${elementId}`;
@@ -192,6 +208,7 @@ class MAICDatabase extends Dexie {
   stageOutlines!: EntityTable<StageOutlinesRecord, 'stageId'>;
   mediaFiles!: EntityTable<MediaFileRecord, 'id'>;
   generatedAgents!: EntityTable<GeneratedAgentRecord, 'id'>;
+  pluginResults!: EntityTable<PluginResultRecord, 'id'>;
 
   constructor() {
     super(DATABASE_NAME);
@@ -309,6 +326,21 @@ class MAICDatabase extends Dexie {
       mediaFiles: 'id, stageId, [stageId+type]',
       generatedAgents: 'id, stageId',
     });
+
+    // Version 9: Add pluginResults table for cached plugin generation output
+    this.version(9).stores({
+      stages: 'id, updatedAt',
+      scenes: 'id, stageId, order, [stageId+order]',
+      audioFiles: 'id, createdAt',
+      imageFiles: 'id, createdAt',
+      snapshots: '++id',
+      chatSessions: 'id, stageId, [stageId+createdAt]',
+      playbackState: 'stageId',
+      stageOutlines: 'stageId',
+      mediaFiles: 'id, stageId, [stageId+type]',
+      generatedAgents: 'id, stageId',
+      pluginResults: 'id, stageId, pluginId',
+    });
   }
 }
 
@@ -405,6 +437,7 @@ export async function deleteStageWithRelatedData(stageId: string): Promise<void>
       db.stageOutlines,
       db.mediaFiles,
       db.generatedAgents,
+      db.pluginResults,
     ],
     async () => {
       await db.stages.delete(stageId);
@@ -414,6 +447,7 @@ export async function deleteStageWithRelatedData(stageId: string): Promise<void>
       await db.stageOutlines.delete(stageId);
       await db.mediaFiles.where('stageId').equals(stageId).delete();
       await db.generatedAgents.where('stageId').equals(stageId).delete();
+      await db.pluginResults.where('stageId').equals(stageId).delete();
     },
   );
 }
@@ -442,5 +476,41 @@ export async function getDatabaseStats() {
     stageOutlines: await db.stageOutlines.count(),
     mediaFiles: await db.mediaFiles.count(),
     generatedAgents: await db.generatedAgents.count(),
+    pluginResults: await db.pluginResults.count(),
   };
+}
+
+// ==================== Plugin Result Helpers ====================
+
+/**
+ * Get cached plugin result for a stage
+ */
+export async function getPluginResult(
+  stageId: string,
+  pluginId: string,
+): Promise<unknown | null> {
+  const record = await db.pluginResults.get(pluginResultKey(stageId, pluginId));
+  if (!record) return null;
+  try {
+    return JSON.parse(record.data);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save plugin result to cache
+ */
+export async function savePluginResult(
+  stageId: string,
+  pluginId: string,
+  data: unknown,
+): Promise<void> {
+  await db.pluginResults.put({
+    id: pluginResultKey(stageId, pluginId),
+    stageId,
+    pluginId,
+    data: JSON.stringify(data),
+    createdAt: Date.now(),
+  });
 }

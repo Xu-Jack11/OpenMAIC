@@ -8,11 +8,12 @@ import type { Action, SpeechAction, DiscussionAction } from '@/lib/types/action'
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store';
-import { PanelRightClose, BookOpen, MessageSquare } from 'lucide-react';
+import { PanelRightClose, BookOpen, MessageSquare, FolderOpen } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useChatSessions } from './use-chat-sessions';
 import { SessionList } from './session-list';
 import { LectureNotesView } from './lecture-notes-view';
+import { FilesSidebar } from '@/components/files/files-sidebar';
 
 interface ChatAreaProps {
   className?: string;
@@ -56,7 +57,7 @@ export interface ChatAreaRef {
   resumeBuffer: (sessionId: string) => void;
   pauseActiveLiveBuffer: () => boolean;
   resumeActiveLiveBuffer: () => void;
-  switchToTab: (tab: 'lecture' | 'chat') => void;
+  switchToTab: (tab: 'lecture' | 'chat' | 'files') => void;
 }
 
 const DEFAULT_WIDTH = 340;
@@ -119,7 +120,7 @@ export const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>(
       shouldHoldAfterReveal,
     });
 
-    const [activeTab, setActiveTab] = useState<'lecture' | 'chat'>('lecture');
+    const [activeTab, setActiveTab] = useState<'lecture' | 'chat' | 'files'>('lecture');
     const isDraggingRef = useRef(false);
     const [isDragging, setIsDragging] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
@@ -180,7 +181,7 @@ export const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>(
       [endSession, onStopSession],
     );
 
-    const switchToTab = useCallback((tab: 'lecture' | 'chat') => {
+    const switchToTab = useCallback((tab: 'lecture' | 'chat' | 'files') => {
       setActiveTab(tab);
     }, []);
 
@@ -262,7 +263,7 @@ export const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>(
         <div className={cn('flex flex-col w-full h-full overflow-hidden', collapsed && 'hidden')}>
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as 'lecture' | 'chat')}
+            onValueChange={(v) => setActiveTab(v as 'lecture' | 'chat' | 'files')}
             className="flex flex-col h-full gap-0"
           >
             {/* Tab header row */}
@@ -282,6 +283,10 @@ export const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>(
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
                     </span>
                   )}
+                </TabsTrigger>
+                <TabsTrigger value="files" className="text-xs gap-1 flex-1">
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  {t('files.title')}
                 </TabsTrigger>
               </TabsList>
 
@@ -329,6 +334,11 @@ export const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>(
                   </>
                 )}
               </div>
+            </TabsContent>
+
+            {/* Files Tab */}
+            <TabsContent value="files" className="flex-1 overflow-hidden flex flex-col">
+              <FilesSidebar />
             </TabsContent>
           </Tabs>
         </div>
