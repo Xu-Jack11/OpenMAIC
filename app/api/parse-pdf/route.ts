@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
-import { parsePDF } from '@/lib/pdf/pdf-providers';
+import { parseDocument } from '@/lib/document/parse-document';
 import { resolvePDFApiKey, resolvePDFBaseUrl } from '@/lib/server/provider-config';
 import type { PDFProviderId } from '@/lib/pdf/types';
-import type { ParsedPdfContent } from '@/lib/types/pdf';
+import type { ParsedDocumentContent } from '@/lib/document/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     }
 
     const config = {
+      format: 'pdf' as const,
       providerId: effectiveProviderId,
       apiKey: clientBaseUrl
         ? apiKey || ''
@@ -55,15 +56,11 @@ export async function POST(req: NextRequest) {
         : resolvePDFBaseUrl(effectiveProviderId, baseUrl || undefined),
     };
 
-    // Convert PDF to buffer
-    const arrayBuffer = await pdfFile.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Parse PDF using the provider system
-    const result = await parsePDF(config, buffer);
+    // Parse PDF using the new document parser system
+    const result = await parseDocument(config, pdfFile);
 
     // Add file metadata
-    const resultWithMetadata: ParsedPdfContent = {
+    const resultWithMetadata: ParsedDocumentContent = {
       ...result,
       metadata: {
         pageCount: result.metadata?.pageCount || 0, // Ensure pageCount is always a number

@@ -14,11 +14,12 @@ export const generationZhCN = {
   },
   upload: {
     pdfSizeLimit: '支持最大50MB的PDF文件',
+    fileSizeLimit: '最大支持 50MB (PDF/Word/PPT/Markdown/图片)',
     generateFailed: '生成课堂失败，请重试',
     requirementPlaceholder:
       '输入你想学的任何内容，例如：\n「从零学 Python，30 分钟写出第一个程序」\n「用白板给我讲解傅里叶变换」\n「阿瓦隆桌游怎么玩」',
     requirementRequired: '请输入课程需求',
-    fileTooLarge: '文件过大，请选择小于50MB的PDF文件',
+    fileTooLarge: '文件过大，请选择小于 50MB 的文件',
   },
   generation: {
     // Progress steps (used dynamically via activeStep)
@@ -84,6 +85,7 @@ export const generationEnUS = {
   },
   upload: {
     pdfSizeLimit: 'Supports PDF files up to 50MB',
+    fileSizeLimit: 'Up to 50MB (PDF/Word/PPT/Markdown/Image)',
     generateFailed: 'Failed to generate classroom, please try again',
     requirementPlaceholder:
       'Tell me anything you want to learn, e.g.\n"Teach me Python from scratch in 30 minutes"\n"Explain Fourier Transform on the whiteboard"\n"How to play the board game Avalon"',

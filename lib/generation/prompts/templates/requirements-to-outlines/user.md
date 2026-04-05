@@ -20,7 +20,7 @@ Please generate scene outlines based on the following course requirements.
 
 ## Reference Materials
 
-### PDF Content Summary
+### Reference Document Content Summary
 
 {{pdfContent}}
 

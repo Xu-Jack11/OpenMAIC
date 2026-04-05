@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useMemo } from 'react';
-import { Bot, Check, ChevronLeft, Globe, Paperclip, FileText, X, Globe2 } from 'lucide-react';
+import { Bot, Check, ChevronLeft, Globe, Paperclip, FileText, X, Globe2, Image as ImageIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
@@ -22,10 +22,8 @@ import type { ProviderId } from '@/lib/ai/providers';
 import type { SettingsSection } from '@/lib/types/settings';
 import { MediaPopover } from '@/components/generation/media-popover';
 import { PluginToggles } from '@/components/generation/plugin-toggles';
-
-// ─── Constants ───────────────────────────────────────────────
-const MAX_PDF_SIZE_MB = 50;
-const MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024;
+import { detectFormat } from '@/lib/document/format-detector';
+import { MAX_FILE_SIZE_BYTES } from '@/lib/document/constants';
 
 // ─── Types ───────────────────────────────────────────────────
 export interface GenerationToolbarProps {
@@ -97,10 +95,16 @@ export function GenerationToolbar({
 
   const currentProviderConfig = providersConfig?.[currentProviderId];
 
-  // PDF handler
+  const selectedFileFormat = useMemo(() => (pdfFile ? detectFormat(pdfFile) : null), [pdfFile]);
+
+  // Multi-format file handler
   const handleFileSelect = (file: File) => {
-    if (file.type !== 'application/pdf') return;
-    if (file.size > MAX_PDF_SIZE_BYTES) {
+    const format = detectFormat(file);
+    if (!format) {
+      onPdfError(t('toolbar.unsupportedFormat'));
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
       onPdfError(t('upload.fileTooLarge'));
       return;
     }
@@ -173,39 +177,41 @@ export function GenerationToolbar({
           )}
         </PopoverTrigger>
         <PopoverContent align="start" className="w-72 p-0">
-          {/* Parser selector */}
-          <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-            <span className="text-xs font-medium text-muted-foreground shrink-0">
-              {t('toolbar.pdfParser')}
-            </span>
-            <Select value={pdfProviderId} onValueChange={(v) => setPDFProvider(v as PDFProviderId)}>
-              <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.values(PDF_PROVIDERS).map((provider) => {
-                  const cfg = pdfProvidersConfig[provider.id];
-                  const available =
-                    !provider.requiresApiKey || !!cfg?.apiKey || !!cfg?.isServerConfigured;
-                  return (
-                    <SelectItem key={provider.id} value={provider.id} disabled={!available}>
-                      <div className={cn('flex items-center gap-1.5', !available && 'opacity-50')}>
-                        {provider.icon && (
-                          <img src={provider.icon} alt={provider.name} className="w-3.5 h-3.5" />
-                        )}
-                        {provider.name}
-                        {cfg?.isServerConfigured && (
-                          <span className="text-[9px] px-1 py-0 rounded border text-muted-foreground">
-                            {t('settings.serverConfigured')}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Parser selector - only show for PDF */}
+          {(!pdfFile || selectedFileFormat === 'pdf') && (
+            <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+              <span className="text-xs font-medium text-muted-foreground shrink-0">
+                {t('toolbar.pdfParser')}
+              </span>
+              <Select value={pdfProviderId} onValueChange={(v) => setPDFProvider(v as PDFProviderId)}>
+                <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(PDF_PROVIDERS).map((provider) => {
+                    const cfg = pdfProvidersConfig[provider.id];
+                    const available =
+                      !provider.requiresApiKey || !!cfg?.apiKey || !!cfg?.isServerConfigured;
+                    return (
+                      <SelectItem key={provider.id} value={provider.id} disabled={!available}>
+                        <div className={cn('flex items-center gap-1.5', !available && 'opacity-50')}>
+                          {provider.icon && (
+                            <img src={provider.icon} alt={provider.name} className="w-3.5 h-3.5" />
+                          )}
+                          {provider.name}
+                          {cfg?.isServerConfigured && (
+                            <span className="text-[9px] px-1 py-0 rounded border text-muted-foreground">
+                              {t('settings.serverConfigured')}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Upload area / file info */}
           <div className="px-3 pb-3">
@@ -213,7 +219,7 @@ export function GenerationToolbar({
               type="file"
               ref={fileInputRef}
               className="hidden"
-              accept=".pdf"
+              accept=".pdf,.docx,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) handleFileSelect(f);
@@ -224,7 +230,11 @@ export function GenerationToolbar({
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <div className="size-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
-                    <FileText className="size-4 text-violet-600 dark:text-violet-400" />
+                    {selectedFileFormat === 'image' ? (
+                      <ImageIcon className="size-4 text-violet-600 dark:text-violet-400" />
+                    ) : (
+                      <FileText className="size-4 text-violet-600 dark:text-violet-400" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{pdfFile.name}</p>
@@ -262,9 +272,9 @@ export function GenerationToolbar({
                 }}
               >
                 <Paperclip className="size-5 text-muted-foreground/50 mb-1.5" />
-                <p className="text-xs font-medium">{t('toolbar.pdfUpload')}</p>
+                <p className="text-xs font-medium">{t('toolbar.attachFile')}</p>
                 <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                  {t('upload.pdfSizeLimit')}
+                  {t('upload.fileSizeLimit')}
                 </p>
               </div>
             )}

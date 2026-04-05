@@ -32,6 +32,23 @@ import { StepVisualizer } from './components/visualizers';
 
 const log = createLogger('GenerationPreview');
 
+function inferMimeTypeFromFileName(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx')) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  if (lower.endsWith('.pptx')) {
+    return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  }
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'application/octet-stream';
+}
+
 function GenerationPreviewContent() {
   const router = useRouter();
   const { t } = useI18n();
@@ -172,13 +189,15 @@ function GenerationPreviewContent() {
           throw new Error(t('generation.pdfLoadFailed'));
         }
 
-        // Wrap as a File to guarantee multipart/form-data with correct content-type
-        const pdfFile = new File([pdfBlob], currentSession.pdfFileName || 'document.pdf', {
-          type: 'application/pdf',
+        // Preserve MIME from stored blob; fallback to extension-based inference.
+        const fileName = currentSession.pdfFileName || 'document.pdf';
+        const inferredMime = inferMimeTypeFromFileName(fileName);
+        const pdfFile = new File([pdfBlob], fileName, {
+          type: pdfBlob.type || inferredMime,
         });
 
         const parseFormData = new FormData();
-        parseFormData.append('pdf', pdfFile);
+        parseFormData.append('file', pdfFile); // changed from 'pdf' to 'file'
 
         if (currentSession.pdfProviderId) {
           parseFormData.append('providerId', currentSession.pdfProviderId);
@@ -190,7 +209,7 @@ function GenerationPreviewContent() {
           parseFormData.append('baseUrl', currentSession.pdfProviderConfig.baseUrl);
         }
 
-        const parseResponse = await fetch('/api/parse-pdf', {
+        const parseResponse = await fetch('/api/parse-document', {
           method: 'POST',
           body: parseFormData,
           signal,

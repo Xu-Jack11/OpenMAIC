@@ -71,3 +71,8 @@ next-env.d.ts
 
 # docs
 /docs
+
+# local debug artifacts
+/.playwright-mcp/
+/2026-*-local-command-caveat*.txt
+
