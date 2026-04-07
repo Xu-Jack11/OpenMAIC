@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCourseAuthStore } from '@/lib/store/course-auth';
 import { getClientTranslation } from '@/lib/i18n';
+import { CreateClassroomDialog } from '@/components/course/create-classroom-dialog';
 
 interface ClassroomItem {
   id: string;
@@ -59,11 +60,7 @@ export default function CourseDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Classroom creation state (server-side async generation)
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [requirement, setRequirement] = useState('');
-  const [classroomName, setClassroomName] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   const loadClassrooms = useCallback(async () => {
     const res = await fetch(`/api/course/${courseId}/classrooms`);
@@ -91,36 +88,15 @@ export default function CourseDashboardPage() {
   }, [courseId, isTeacher]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading gate is intentional before parallel fetches
     setLoading(true);
     Promise.all([loadClassrooms(), loadMembers(), loadDocuments(), loadInvitations()])
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [courseId, loadClassrooms, loadMembers, loadDocuments, loadInvitations]);
 
-  function handleGenerateClassroom() {
-    sessionStorage.setItem('generationCourseId', courseId);
-    router.push('/generation-preview');
-  }
-
-  async function handleCreateClassroom(e: React.FormEvent) {
-    e.preventDefault();
-    setCreating(true);
-    try {
-      const res = await fetch(`/api/course/${courseId}/classrooms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirement, name: classroomName || undefined }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setShowCreateForm(false);
-        setRequirement('');
-        setClassroomName('');
-        await loadClassrooms();
-      }
-    } finally {
-      setCreating(false);
-    }
+  function handleOpenCreateDialog() {
+    setShowCreateDialog(true);
   }
 
   async function handleCreateInvite(role: 'TEACHER' | 'STUDENT') {
@@ -193,6 +169,13 @@ export default function CourseDashboardPage() {
       <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Course title */}
         <h1 className="text-xl font-semibold mb-6">{currentCourse?.name}</h1>
+
+        <CreateClassroomDialog
+          courseId={courseId}
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+        />
+
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700">
           {(['classrooms', 'members', 'documents'] as Tab[]).map((tabKey) => (
@@ -216,60 +199,13 @@ export default function CourseDashboardPage() {
             {isTeacher() && (
               <div className="mb-4 flex justify-end gap-2">
                 <button
-                  onClick={handleGenerateClassroom}
+                  onClick={handleOpenCreateDialog}
+                  data-testid="open-create-classroom-dialog"
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
                 >
                   {t('course.dashboardCreateClassroom')}
                 </button>
               </div>
-            )}
-            {showCreateForm && (
-              <form
-                onSubmit={handleCreateClassroom}
-                className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3"
-              >
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {t('course.requirementLabel')}
-                  </label>
-                  <textarea
-                    value={requirement}
-                    onChange={(e) => setRequirement(e.target.value)}
-                    placeholder={t('course.requirementPlaceholder')}
-                    required
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-transparent text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    {t('course.classroomNameLabel')}
-                  </label>
-                  <input
-                    type="text"
-                    value={classroomName}
-                    onChange={(e) => setClassroomName(e.target.value)}
-                    placeholder={t('course.classroomNamePlaceholder')}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {creating ? t('common.loading') : t('course.dashboardCreateClassroom')}
-                  </button>
-                </div>
-              </form>
             )}
             <div className="grid gap-3">
               {classrooms.map((c) => (

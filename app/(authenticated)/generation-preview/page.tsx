@@ -670,140 +670,151 @@ function GenerationPreviewContent() {
           ? `Student: ${currentSession.requirements.userNickname || 'Unknown'}${currentSession.requirements.userBio ? ` — ${currentSession.requirements.userBio}` : ''}`
           : undefined;
 
-      // Generate ONLY the first scene
+      // Generate all scenes sequentially
       store.setGeneratingOutlines(outlines);
+      let previousSpeeches: string[] = [];
 
-      const firstOutline = outlines[0];
+      for (let sceneIdx = 0; sceneIdx < outlines.length; sceneIdx++) {
+        const outline = outlines[sceneIdx];
 
-      // Step 2: Generate content (currentStepIndex is already 2)
-      const contentResp = await fetch('/api/generate/scene-content', {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({
-          outline: firstOutline,
-          allOutlines: outlines,
-          pdfImages: currentSession.pdfImages,
-          imageMapping,
-          stageInfo,
-          stageId: stage.id,
-          agents,
-        }),
-        signal,
-      });
-
-      if (!contentResp.ok) {
-        const errorData = await contentResp.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
-      }
-
-      const contentData = await contentResp.json();
-      if (!contentData.success || !contentData.content) {
-        throw new Error(contentData.error || t('generation.sceneGenerateFailed'));
-      }
-
-      // Generate actions (activate actions step indicator)
-      const actionsStepIdx = activeSteps.findIndex((s) => s.id === 'actions');
-      setCurrentStepIndex(actionsStepIdx >= 0 ? actionsStepIdx : currentStepIndex + 1);
-
-      const actionsResp = await fetch('/api/generate/scene-actions', {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({
-          outline: contentData.effectiveOutline || firstOutline,
-          allOutlines: outlines,
-          content: contentData.content,
-          stageId: stage.id,
-          agents,
-          previousSpeeches: [],
-          userProfile,
-        }),
-        signal,
-      });
-
-      if (!actionsResp.ok) {
-        const errorData = await actionsResp.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
-      }
-
-      const data = await actionsResp.json();
-      if (!data.success || !data.scene) {
-        throw new Error(data.error || t('generation.sceneGenerateFailed'));
-      }
-
-      // Generate TTS for first scene (part of actions step — blocking)
-      if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
-        const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
-        const speechActions = (data.scene.actions || []).filter(
-          (a: { type: string; text?: string }) => a.type === 'speech' && a.text,
+        setStatusMessage(
+          t('generation.sceneProgress')
+            .replace('{current}', String(sceneIdx + 1))
+            .replace('{total}', String(outlines.length)),
         );
 
-        let ttsFailCount = 0;
-        for (const action of speechActions) {
-          const audioId = `tts_${action.id}`;
-          action.audioId = audioId;
-          try {
-            const resp = await fetch('/api/generate/tts', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                text: action.text,
-                audioId,
-                ttsProviderId: settings.ttsProviderId,
-                ttsModelId: ttsProviderConfig?.modelId,
-                ttsVoice: settings.ttsVoice,
-                ttsSpeed: settings.ttsSpeed,
-                ttsApiKey: ttsProviderConfig?.apiKey || undefined,
-                ttsBaseUrl: ttsProviderConfig?.baseUrl || undefined,
-              }),
-              signal,
-            });
-            if (!resp.ok) {
+        // Step: Generate content
+        const contentStepActive = activeSteps.findIndex((s) => s.id === 'slide-content');
+        if (contentStepActive >= 0) setCurrentStepIndex(contentStepActive);
+
+        const contentResp = await fetch('/api/generate/scene-content', {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify({
+            outline,
+            allOutlines: outlines,
+            pdfImages: currentSession.pdfImages,
+            imageMapping,
+            stageInfo,
+            stageId: stage.id,
+            agents,
+          }),
+          signal,
+        });
+
+        if (!contentResp.ok) {
+          const errorData = await contentResp.json().catch(() => ({ error: 'Request failed' }));
+          throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
+        }
+
+        const contentData = await contentResp.json();
+        if (!contentData.success || !contentData.content) {
+          throw new Error(contentData.error || t('generation.sceneGenerateFailed'));
+        }
+
+        // Step: Generate actions
+        const actionsStepActive = activeSteps.findIndex((s) => s.id === 'actions');
+        if (actionsStepActive >= 0) setCurrentStepIndex(actionsStepActive);
+
+        const actionsResp = await fetch('/api/generate/scene-actions', {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify({
+            outline: contentData.effectiveOutline || outline,
+            allOutlines: outlines,
+            content: contentData.content,
+            stageId: stage.id,
+            agents,
+            previousSpeeches,
+            userProfile,
+          }),
+          signal,
+        });
+
+        if (!actionsResp.ok) {
+          const errorData = await actionsResp.json().catch(() => ({ error: 'Request failed' }));
+          throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
+        }
+
+        const data = await actionsResp.json();
+        if (!data.success || !data.scene) {
+          throw new Error(data.error || t('generation.sceneGenerateFailed'));
+        }
+
+        // Generate TTS for this scene
+        if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
+          const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
+          const speechActions = (data.scene.actions || []).filter(
+            (a: { type: string; text?: string }) => a.type === 'speech' && a.text,
+          );
+
+          let ttsFailCount = 0;
+          for (const action of speechActions) {
+            const audioId = `tts_${action.id}`;
+            action.audioId = audioId;
+            try {
+              const resp = await fetch('/api/generate/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  text: action.text,
+                  audioId,
+                  ttsProviderId: settings.ttsProviderId,
+                  ttsModelId: ttsProviderConfig?.modelId,
+                  ttsVoice: settings.ttsVoice,
+                  ttsSpeed: settings.ttsSpeed,
+                  ttsApiKey: ttsProviderConfig?.apiKey || undefined,
+                  ttsBaseUrl: ttsProviderConfig?.baseUrl || undefined,
+                }),
+                signal,
+              });
+              if (!resp.ok) {
+                ttsFailCount++;
+                continue;
+              }
+              const ttsData = await resp.json();
+              if (!ttsData.success) {
+                ttsFailCount++;
+                continue;
+              }
+              const binary = atob(ttsData.base64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              const blob = new Blob([bytes], { type: `audio/${ttsData.format}` });
+              await db.audioFiles.put({
+                id: audioId,
+                blob,
+                format: ttsData.format,
+                createdAt: Date.now(),
+              });
+            } catch (err) {
+              log.warn(`[TTS] Failed for ${audioId}:`, err);
               ttsFailCount++;
-              continue;
             }
-            const ttsData = await resp.json();
-            if (!ttsData.success) {
-              ttsFailCount++;
-              continue;
-            }
-            const binary = atob(ttsData.base64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const blob = new Blob([bytes], { type: `audio/${ttsData.format}` });
-            await db.audioFiles.put({
-              id: audioId,
-              blob,
-              format: ttsData.format,
-              createdAt: Date.now(),
-            });
-          } catch (err) {
-            log.warn(`[TTS] Failed for ${audioId}:`, err);
-            ttsFailCount++;
+          }
+
+          if (ttsFailCount > 0 && speechActions.length > 0) {
+            throw new Error(t('generation.speechFailed'));
           }
         }
 
-        if (ttsFailCount > 0 && speechActions.length > 0) {
-          throw new Error(t('generation.speechFailed'));
+        // Add scene to store
+        store.addScene(data.scene);
+        if (sceneIdx === 0) {
+          store.setCurrentSceneId(data.scene.id);
         }
+
+        // Update generating outlines (remove completed)
+        const remainingOutlines = outlines.filter(
+          (o) => !useStageStore.getState().scenes.some((s) => s.order === o.order),
+        );
+        store.setGeneratingOutlines(remainingOutlines);
+
+        // Carry forward previous speeches for context continuity
+        previousSpeeches = data.previousSpeeches || [];
       }
 
-      // Add scene to store and navigate
-      store.addScene(data.scene);
-      store.setCurrentSceneId(data.scene.id);
-
-      // Set remaining outlines as skeleton placeholders
-      const remaining = outlines.filter((o) => o.order !== data.scene.order);
-      store.setGeneratingOutlines(remaining);
-
-      // Store generation params for classroom to continue generation
-      sessionStorage.setItem(
-        'generationParams',
-        JSON.stringify({
-          pdfImages: currentSession.pdfImages,
-          agents,
-          userProfile,
-        }),
-      );
+      store.setGeneratingOutlines([]);
 
       sessionStorage.removeItem('generationSession');
 
@@ -819,9 +830,11 @@ function GenerationPreviewContent() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          // Read latest Zustand snapshot to avoid stale closure state.
+          // `store` captured earlier may still hold old `scenes` reference.
           body: JSON.stringify({
             stage,
-            scenes: store.scenes,
+            scenes: useStageStore.getState().scenes,
             name: stage.name,
             language: stage.language,
             style: stage.style,

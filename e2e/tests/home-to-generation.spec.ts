@@ -21,4 +21,29 @@ test.describe('Dashboard', () => {
     // Course card should be clickable
     await expect(home.courseCards).toHaveCount(1);
   });
+
+  test('course dashboard create classroom opens prompt dialog and navigates to preview', async ({
+    page,
+    mockApi,
+  }) => {
+    await mockApi.mockCourseDashboardData();
+
+    await page.goto('/course/e2e-course-1');
+
+    const openDialogButton = page.getByTestId('open-create-classroom-dialog');
+    await expect(openDialogButton).toBeVisible();
+    await openDialogButton.click();
+
+    const requirementInput = page.getByTestId('create-classroom-requirement');
+    const submitButton = page.getByTestId('create-classroom-submit');
+
+    await expect(requirementInput).toBeVisible();
+    await expect(submitButton).toBeDisabled();
+
+    await requirementInput.fill('讲解牛顿三大定律');
+    await expect(submitButton).toBeEnabled();
+
+    await submitButton.click();
+    await expect(page).toHaveURL(/\/generation-preview/);
+  });
 });

@@ -47,10 +47,13 @@ export class MockApi {
   /** Mock the scene actions generation endpoint */
   async mockSceneActions(stageId = 'test-stage') {
     await this.page.route('**/api/generate/scene-actions', (route) => {
+      const payload = route.request().postDataJSON() as { stageId?: string };
+      const resolvedStageId = payload?.stageId || stageId;
+
       route.fulfill({
         status: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createMockSceneActionsResponse(stageId)),
+        body: JSON.stringify(createMockSceneActionsResponse(resolvedStageId)),
       });
     });
   }
@@ -91,6 +94,23 @@ export class MockApi {
   /** Mock the classroom import endpoint (generation-preview completion) */
   async mockClassroomImport() {
     await this.page.route('**/api/course/*/classrooms/import', (route) => {
+      const payload = route.request().postDataJSON() as {
+        stage?: { id?: string };
+        scenes?: unknown[];
+      };
+
+      if (!payload?.stage?.id || !Array.isArray(payload.scenes) || payload.scenes.length === 0) {
+        route.fulfill({
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            success: false,
+            error: 'stage and scenes are required',
+          }),
+        });
+        return;
+      }
+
       route.fulfill({
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -101,6 +121,62 @@ export class MockApi {
         }),
       });
     });
+  }
+
+  /** Mock course dashboard list endpoints */
+  async mockCourseDashboardData() {
+    await Promise.all([
+      this.page.route('**/api/course/*/classrooms', (route) => {
+        if (route.request().method() !== 'GET') {
+          route.continue();
+          return;
+        }
+
+        route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: true, classrooms: [] }),
+        });
+      }),
+
+      this.page.route('**/api/course/*/members', (route) => {
+        route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            success: true,
+            members: [
+              {
+                id: 'e2e-member-1',
+                role: 'TEACHER',
+                joinedAt: new Date().toISOString(),
+                user: {
+                  id: 'e2e-user-1',
+                  name: 'E2E Tester',
+                  avatar: null,
+                },
+              },
+            ],
+          }),
+        });
+      }),
+
+      this.page.route('**/api/course/*/documents', (route) => {
+        route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: true, documents: [] }),
+        });
+      }),
+
+      this.page.route('**/api/course/*/invitations', (route) => {
+        route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: true, invitations: [] }),
+        });
+      }),
+    ]);
   }
 
   /** Set up API mocks for the generation flow. Note: server-providers is already mocked by the base fixture. */
