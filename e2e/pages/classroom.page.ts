@@ -11,8 +11,8 @@ export class ClassroomPage {
     this.sidebarScenes = page.locator('[data-testid="scene-item"]');
   }
 
-  async goto(stageId: string) {
-    await this.page.goto(`/classroom/${stageId}`);
+  async goto(courseId: string, classroomId: string) {
+    await this.page.goto(`/course/${courseId}/classroom/${classroomId}`);
   }
 
   async waitForLoaded() {

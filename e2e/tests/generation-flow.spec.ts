@@ -23,6 +23,7 @@ test.describe('Generation Flow', () => {
       ({ settings, session }) => {
         localStorage.setItem('settings-storage', settings);
         sessionStorage.setItem('generationSession', session);
+        sessionStorage.setItem('generationCourseId', 'e2e-course-1');
       },
       { settings: SETTINGS_STORAGE, session: GENERATION_SESSION },
     );
@@ -31,6 +32,7 @@ test.describe('Generation Flow', () => {
   test('completes generation pipeline and redirects to classroom', async ({ page, mockApi }) => {
     // Set up all API mocks
     await mockApi.setupGenerationMocks();
+    await mockApi.mockClassroomImport();
 
     const preview = new GenerationPreviewPage(page);
     await preview.goto();
@@ -38,8 +40,8 @@ test.describe('Generation Flow', () => {
     // Generation card with progress dots should be visible
     await expect(preview.stepTitle).toBeVisible();
 
-    // Wait for auto-redirect to classroom
+    // Wait for auto-redirect to course classroom
     await preview.waitForRedirectToClassroom();
-    expect(page.url()).toMatch(/\/classroom\//);
+    expect(page.url()).toMatch(/\/course\/[^/]+\/classroom\/[^/]+/);
   });
 });

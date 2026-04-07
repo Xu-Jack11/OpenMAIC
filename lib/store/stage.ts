@@ -53,6 +53,11 @@ interface StageState {
   // UI state
   toolbarState: ToolbarState;
 
+  // Course context (when loaded from server)
+  courseId: string | null;
+  classroomId: string | null;
+  _serverLoadedAt: number | null; // prevents auto-save from overwriting freshly loaded data
+
   // Transient generation state (not persisted)
   generatingOutlines: SceneOutline[];
 
@@ -89,6 +94,9 @@ interface StageState {
   getSceneById: (sceneId: string) => Scene | null;
   getSceneIndex: (sceneId: string) => number;
 
+  // Course context
+  setCourseContext: (courseId: string, classroomId: string) => void;
+
   // Storage
   saveToStorage: () => Promise<void>;
   loadFromStorage: (stageId: string) => Promise<void>;
@@ -103,6 +111,9 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   chats: [],
   mode: 'playback',
   toolbarState: 'ai',
+  courseId: null,
+  classroomId: null,
+  _serverLoadedAt: null,
   generatingOutlines: [],
   outlines: [],
   generationEpoch: 0,
@@ -123,7 +134,11 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   },
 
   setScenes: (scenes) => {
-    set({ scenes });
+    const currentStage = get().stage;
+    set({
+      scenes,
+      ...(currentStage ? { stage: { ...currentStage, updatedAt: Date.now() } } : {}),
+    });
     // Auto-select first scene if no current scene
     if (!get().currentSceneId && scenes.length > 0) {
       set({ currentSceneId: scenes[0].id });
@@ -148,20 +163,26 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     set({
       scenes,
       generatingOutlines,
+      ...(currentStage ? { stage: { ...currentStage, updatedAt: Date.now() } } : {}),
       ...(shouldSwitch ? { currentSceneId: scene.id } : {}),
     });
     debouncedSave();
   },
 
   updateScene: (sceneId, updates) => {
+    const currentStage = get().stage;
     const scenes = get().scenes.map((scene) =>
       scene.id === sceneId ? { ...scene, ...updates } : scene,
     );
-    set({ scenes });
+    set({
+      scenes,
+      ...(currentStage ? { stage: { ...currentStage, updatedAt: Date.now() } } : {}),
+    });
     debouncedSave();
   },
 
   deleteScene: (sceneId) => {
+    const currentStage = get().stage;
     const scenes = get().scenes.filter((scene) => scene.id !== sceneId);
     const currentSceneId = get().currentSceneId;
 
@@ -171,10 +192,14 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       const newIndex = index < scenes.length ? index : scenes.length - 1;
       set({
         scenes,
+        ...(currentStage ? { stage: { ...currentStage, updatedAt: Date.now() } } : {}),
         currentSceneId: scenes[newIndex]?.id || null,
       });
     } else {
-      set({ scenes });
+      set({
+        scenes,
+        ...(currentStage ? { stage: { ...currentStage, updatedAt: Date.now() } } : {}),
+      });
     }
     debouncedSave();
   },
@@ -246,21 +271,51 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
     return get().scenes.findIndex((s) => s.id === sceneId);
   },
 
+  // Course context
+  setCourseContext: (courseId, classroomId) => {
+    set({ courseId, classroomId, _serverLoadedAt: Date.now() });
+  },
+
   // Storage methods
   saveToStorage: async () => {
-    const { stage, scenes, currentSceneId, chats } = get();
+    const { stage, scenes, courseId, classroomId, _serverLoadedAt } = get();
     if (!stage?.id) {
       log.warn('Cannot save: stage.id is required');
       return;
     }
 
+    // Server-side save when in course context
+    if (courseId && classroomId) {
+      // Prevent overwriting freshly loaded data before any user edit
+      if (_serverLoadedAt && (stage.updatedAt ?? 0) <= _serverLoadedAt) {
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/course/${courseId}/classrooms/${classroomId}/content`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stage, scenes }),
+          },
+        );
+        if (!res.ok) {
+          log.error('Server save failed:', res.status);
+        }
+      } catch (error) {
+        log.error('Failed to save to server:', error);
+      }
+      return;
+    }
+
+    // Legacy local save (IndexedDB) - kept for backward compatibility
     try {
       const { saveStageData } = await import('@/lib/utils/stage-storage');
       await saveStageData(stage.id, {
         stage,
         scenes,
-        currentSceneId,
-        chats,
+        currentSceneId: get().currentSceneId,
+        chats: get().chats,
       });
     } catch (error) {
       log.error('Failed to save to storage:', error);
@@ -312,6 +367,9 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       currentSceneId: null,
       chats: [],
       outlines: [],
+      courseId: null,
+      classroomId: null,
+      _serverLoadedAt: null,
       generationEpoch: s.generationEpoch + 1,
       generationStatus: 'idle' as const,
       currentGeneratingOrder: -1,

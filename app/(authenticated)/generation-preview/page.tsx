@@ -806,8 +806,37 @@ function GenerationPreviewContent() {
       );
 
       sessionStorage.removeItem('generationSession');
-      await store.saveToStorage();
-      router.push(`/classroom/${stage.id}`);
+
+      // Save to server via course import API
+      const generationCourseId = sessionStorage.getItem('generationCourseId');
+      if (!generationCourseId) {
+        setError('No course context. Please generate from within a course.');
+        return;
+      }
+
+      const importRes = await fetch(
+        `/api/course/${generationCourseId}/classrooms/import`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stage,
+            scenes: store.scenes,
+            name: stage.name,
+            language: stage.language,
+            style: stage.style,
+          }),
+        },
+      );
+      const importJson = await importRes.json();
+      if (importJson.success) {
+        sessionStorage.removeItem('generationCourseId');
+        router.push(
+          `/course/${generationCourseId}/classroom/${importJson.classroomId}`,
+        );
+      } else {
+        setError(importJson.error ?? 'Failed to save classroom');
+      }
     } catch (err) {
       // AbortError is expected when navigating away — don't show as error
       if (err instanceof DOMException && err.name === 'AbortError') {

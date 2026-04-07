@@ -16,6 +16,6 @@ export class GenerationPreviewPage {
   }
 
   async waitForRedirectToClassroom() {
-    await this.page.waitForURL(/\/classroom\//, { timeout: 30_000 });
+    await this.page.waitForURL(/\/course\/[^/]+\/classroom\/[^/]+/, { timeout: 30_000 });
   }
 }

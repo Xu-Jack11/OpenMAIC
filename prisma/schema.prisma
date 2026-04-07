@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  TEACHER
+  STUDENT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  account      String?  @unique
+  passwordHash String?
+  avatar       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions          SessionToken[]
+  courseMemberships CourseMember[]
+  createdCourses    Course[]       @relation("CourseCreator")
+  classrooms        Classroom[]    @relation("ClassroomCreator")
+  documents         Document[]     @relation("DocumentUploader")
+
+  @@map("users")
+}
+
+model SessionToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+  @@map("session_tokens")
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  creatorId   String
+  creator     User     @relation("CourseCreator", fields: [creatorId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members         CourseMember[]
+  classrooms      Classroom[]
+  documents       Document[]
+  invitationCodes InvitationCode[]
+
+  @@index([creatorId])
+  @@map("courses")
+}
+
+model CourseMember {
+  id       String   @id @default(cuid())
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     Role
+  joinedAt DateTime @default(now())
+
+  @@unique([courseId, userId])
+  @@index([userId])
+  @@map("course_members")
+}
+
+model Classroom {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  creatorId   String
+  creator     User     @relation("ClassroomCreator", fields: [creatorId], references: [id])
+  name        String
+  description String?
+  /// Filesystem key: data/classrooms/{storageId}.json
+  storageId   String   @unique
+  sceneCount  Int      @default(0)
+  language    String?
+  style       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([courseId])
+  @@index([creatorId])
+  @@map("classrooms")
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  uploaderId  String
+  uploader    User     @relation("DocumentUploader", fields: [uploaderId], references: [id])
+  name        String
+  mimeType    String
+  sizeBytes   Int
+  /// Relative path: data/documents/{courseId}/{docId}.{ext}
+  storagePath String
+  createdAt   DateTime @default(now())
+
+  @@index([courseId])
+  @@map("documents")
+}
+
+model InvitationCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  courseId  String
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  role      Role
+  maxUses   Int?
+  usedCount Int       @default(0)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  createdBy String
+
+  @@index([code])
+  @@index([courseId])
+  @@map("invitation_codes")
+}
