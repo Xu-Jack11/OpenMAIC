@@ -243,6 +243,8 @@ export interface StatelessChatRequest {
     currentSceneId: string | null;
     mode: StageMode;
     whiteboardOpen: boolean;
+    /** Course ID for RAG document retrieval (optional) */
+    courseId?: string;
   };
   /** Agent configuration */
   config: {

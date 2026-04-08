@@ -5,8 +5,9 @@
  *
  * This endpoint:
  * 1. Receives full state from client (messages + storeState)
- * 2. Runs single-pass generation
- * 3. Streams events as SSE (text deltas + tool calls)
+ * 2. Retrieves RAG document context if courseId is provided
+ * 3. Runs single-pass generation
+ * 4. Streams events as SSE (text deltas + tool calls)
  *
  * Fully stateless: interruption is handled by the client aborting
  * the fetch request, which triggers req.signal on the server side.
@@ -19,6 +20,7 @@ import type { ThinkingConfig } from '@/lib/types/provider';
 import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModel } from '@/lib/server/resolve-model';
+import { buildDocumentContext } from '@/lib/rag';
 const log = createLogger('Chat API');
 
 // Allow streaming responses up to 60 seconds
@@ -80,6 +82,31 @@ export async function POST(req: NextRequest) {
       `Agents: ${body.config.agentIds.join(', ')}, Messages: ${body.messages.length}, Turn: ${body.directorState?.turnCount ?? 0}`,
     );
 
+    let documentContext: string | null = null;
+    if (body.storeState.courseId) {
+      try {
+        const lastUserMessage = [...body.messages].reverse().find((m) => m.role === 'user');
+        const query = lastUserMessage?.parts
+          ? lastUserMessage.parts.map((p) => ('text' in p ? p.text : '')).join(' ')
+          : '';
+
+        if (query) {
+          const ragContext = await buildDocumentContext({
+            courseId: body.storeState.courseId,
+            query,
+            topK: 5,
+            maxTokens: 2000,
+          });
+          if (ragContext) {
+            documentContext = ragContext.text;
+            log.info(`Retrieved ${ragContext.sources.length} document sources for chat context`);
+          }
+        }
+      } catch (e) {
+        log.warn('Failed to retrieve document context for chat:', e);
+      }
+    }
+
     // Use the native request signal for abort propagation
     const signal = req.signal;
 
@@ -121,6 +148,7 @@ export async function POST(req: NextRequest) {
           signal,
           languageModel,
           { enabled: false } satisfies ThinkingConfig,
+          documentContext,
         );
 
         for await (const event of generator) {

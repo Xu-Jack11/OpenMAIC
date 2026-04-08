@@ -80,6 +80,7 @@ export async function POST(
         : {}),
       ...(rawBody.enableTTS != null ? { enableTTS: rawBody.enableTTS } : {}),
       ...(rawBody.agentMode ? { agentMode: rawBody.agentMode } : {}),
+      courseId,
     };
 
     const baseUrl = buildRequestOrigin(req);

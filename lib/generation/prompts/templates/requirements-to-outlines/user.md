@@ -20,6 +20,10 @@ Please generate scene outlines based on the following course requirements.
 
 ## Reference Materials
 
+### Course Document Context (RAG Retrieved)
+
+{{documentContext}}
+
 ### Reference Document Content Summary
 
 {{pdfContent}}

@@ -97,6 +97,7 @@ export function buildStructuredPrompt(
   whiteboardLedger?: WhiteboardActionRecord[],
   userProfile?: { nickname?: string; bio?: string },
   agentResponses?: AgentTurnSummary[],
+  documentContext?: string | null,
 ): string {
   // Determine current scene type for action filtering
   const currentScene = storeState.currentSceneId
@@ -113,6 +114,17 @@ export function buildStructuredPrompt(
 
   // Build virtual whiteboard context from ledger (shows changes by other agents this round)
   const virtualWbContext = buildVirtualWhiteboardContext(storeState, whiteboardLedger);
+
+  const documentContextSection = documentContext
+    ? `
+# Course Reference Materials (RAG Context)
+The following excerpts are retrieved from course documents and may be relevant to the current discussion:
+
+${documentContext}
+
+Use this information to provide accurate, contextual responses when relevant. Reference specific facts, concepts, or terminology from these materials when applicable.
+`
+    : '';
 
   // Build student profile section (only when nickname or bio is present)
   const studentProfileSection =
@@ -227,7 +239,7 @@ ${slideActionGuidelines}- Whiteboard actions (wb_open, wb_draw_text, wb_draw_sha
 - WHITEBOARD CLOSE RULE (CRITICAL): Do NOT call wb_close at the end of your response. Leave the whiteboard OPEN so students can read what you drew. Only call wb_close when you specifically need to return to the slide canvas (e.g., to use spotlight or laser on slide elements). Frequent open/close is distracting.
 - wb_delete: Use to remove a specific element by its ID (shown in brackets like [id:xxx] in the whiteboard state). Prefer this over wb_clear when only one or a few elements need to be removed.
 ${mutualExclusionNote}
-
+${documentContextSection}
 # Current State
 ${stateContext}
 ${virtualWbContext}

@@ -59,6 +59,8 @@ const OrchestratorState = Annotation.Root({
   userProfile: Annotation<{ nickname?: string; bio?: string } | null>,
   /** Request-scoped agent configs for generated agents (not in the default registry) */
   agentConfigOverrides: Annotation<Record<string, AgentConfig>>,
+  /** RAG-retrieved course document context */
+  documentContext: Annotation<string | null>,
 
   // Mutable (updated by nodes)
   currentAgentId: Annotation<string | null>,
@@ -288,6 +290,7 @@ async function runAgentGeneration(
     state.whiteboardLedger,
     state.userProfile || undefined,
     state.agentResponses,
+    state.documentContext,
   );
   const openaiMessages = convertMessagesToOpenAI(state.messages, agentId);
   const adapter = new AISdkLangGraphAdapter(state.languageModel, state.thinkingConfig ?? undefined);
@@ -503,6 +506,7 @@ export function buildInitialState(
   request: StatelessChatRequest,
   languageModel: LanguageModel,
   thinkingConfig?: ThinkingConfig,
+  documentContext?: string | null,
 ): typeof OrchestratorState.State {
   // Build request-scoped agent config overrides for generated agents.
   // These travel with each request — no server-side persistence needed.
@@ -539,6 +543,7 @@ export function buildInitialState(
     triggerAgentId: request.config.triggerAgentId || null,
     userProfile: request.userProfile || null,
     agentConfigOverrides,
+    documentContext: documentContext ?? null,
     currentAgentId: null,
     turnCount,
     agentResponses: incoming?.agentResponses ?? [],

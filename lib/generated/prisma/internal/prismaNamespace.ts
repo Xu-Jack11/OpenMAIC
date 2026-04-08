@@ -390,6 +390,7 @@ export const ModelName = {
   CourseMember: 'CourseMember',
   Classroom: 'Classroom',
   Document: 'Document',
+  DocumentChunk: 'DocumentChunk',
   InvitationCode: 'InvitationCode'
 } as const
 
@@ -406,7 +407,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "sessionToken" | "course" | "courseMember" | "classroom" | "document" | "invitationCode"
+    modelProps: "user" | "sessionToken" | "course" | "courseMember" | "classroom" | "document" | "documentChunk" | "invitationCode"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -854,6 +855,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    DocumentChunk: {
+      payload: Prisma.$DocumentChunkPayload<ExtArgs>
+      fields: Prisma.DocumentChunkFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.DocumentChunkFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.DocumentChunkFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>
+        }
+        findFirst: {
+          args: Prisma.DocumentChunkFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.DocumentChunkFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>
+        }
+        findMany: {
+          args: Prisma.DocumentChunkFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>[]
+        }
+        create: {
+          args: Prisma.DocumentChunkCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>
+        }
+        createMany: {
+          args: Prisma.DocumentChunkCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.DocumentChunkCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>[]
+        }
+        delete: {
+          args: Prisma.DocumentChunkDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>
+        }
+        update: {
+          args: Prisma.DocumentChunkUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>
+        }
+        deleteMany: {
+          args: Prisma.DocumentChunkDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.DocumentChunkUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.DocumentChunkUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>[]
+        }
+        upsert: {
+          args: Prisma.DocumentChunkUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DocumentChunkPayload>
+        }
+        aggregate: {
+          args: Prisma.DocumentChunkAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDocumentChunk>
+        }
+        groupBy: {
+          args: Prisma.DocumentChunkGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DocumentChunkGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.DocumentChunkCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DocumentChunkCountAggregateOutputType> | number
+        }
+      }
+    }
     InvitationCode: {
       payload: Prisma.$InvitationCodePayload<ExtArgs>
       fields: Prisma.InvitationCodeFieldRefs
@@ -1039,10 +1114,24 @@ export const DocumentScalarFieldEnum = {
   mimeType: 'mimeType',
   sizeBytes: 'sizeBytes',
   storagePath: 'storagePath',
+  indexStatus: 'indexStatus',
+  indexError: 'indexError',
   createdAt: 'createdAt'
 } as const
 
 export type DocumentScalarFieldEnum = (typeof DocumentScalarFieldEnum)[keyof typeof DocumentScalarFieldEnum]
+
+
+export const DocumentChunkScalarFieldEnum = {
+  id: 'id',
+  documentId: 'documentId',
+  content: 'content',
+  chunkIndex: 'chunkIndex',
+  metadata: 'metadata',
+  createdAt: 'createdAt'
+} as const
+
+export type DocumentChunkScalarFieldEnum = (typeof DocumentChunkScalarFieldEnum)[keyof typeof DocumentChunkScalarFieldEnum]
 
 
 export const InvitationCodeScalarFieldEnum = {
@@ -1068,6 +1157,14 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
+export const NullableJsonNullValueInput = {
+  DbNull: DbNull,
+  JsonNull: JsonNull
+} as const
+
+export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
 export const QueryMode = {
   default: 'default',
   insensitive: 'insensitive'
@@ -1082,6 +1179,15 @@ export const NullsOrder = {
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 
 
 
@@ -1143,6 +1249,20 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
  * Reference to a field of type 'Int[]'
  */
 export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+/**
+ * Reference to a field of type 'Json'
+ */
+export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+/**
+ * Reference to a field of type 'QueryMode'
+ */
+export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
     
 
 
@@ -1260,6 +1380,7 @@ export type GlobalOmitConfig = {
   courseMember?: Prisma.CourseMemberOmit
   classroom?: Prisma.ClassroomOmit
   document?: Prisma.DocumentOmit
+  documentChunk?: Prisma.DocumentChunkOmit
   invitationCode?: Prisma.InvitationCodeOmit
 }
 

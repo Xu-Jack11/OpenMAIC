@@ -11,6 +11,7 @@ import type { PBLAgent, PBLIssue } from '@/lib/pbl/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromHeaders } from '@/lib/server/resolve-model';
+import { buildDocumentContext } from '@/lib/rag';
 const log = createLogger('PBL Chat');
 
 interface PBLChatRequest {
@@ -20,6 +21,8 @@ interface PBLChatRequest {
   recentMessages: { agent_name: string; message: string }[];
   userRole: string;
   agentType?: 'question' | 'judge';
+  /** Course ID for RAG document retrieval (optional) */
+  courseId?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -27,7 +30,7 @@ export async function POST(req: NextRequest) {
   let resolvedAgentType: string | undefined;
   try {
     const body = (await req.json()) as PBLChatRequest;
-    const { message, agent, currentIssue, recentMessages, userRole, agentType } = body;
+    const { message, agent, currentIssue, recentMessages, userRole, agentType, courseId } = body;
     agentName = agent?.name;
     resolvedAgentType = agentType;
 
@@ -37,6 +40,24 @@ export async function POST(req: NextRequest) {
 
     // Get model config from headers
     const { model } = resolveModelFromHeaders(req);
+
+    let documentContext = '';
+    if (courseId) {
+      try {
+        const ragContext = await buildDocumentContext({
+          courseId,
+          query: message,
+          topK: 5,
+          maxTokens: 2000,
+        });
+        if (ragContext) {
+          documentContext = `\n\n## Reference Materials (Course Documents)\n${ragContext.text}`;
+          log.info(`Retrieved ${ragContext.sources.length} document sources for PBL chat`);
+        }
+      } catch (e) {
+        log.warn('Failed to retrieve document context for PBL chat:', e);
+      }
+    }
 
     // Build context for the agent, differentiating question vs judge
     let issueContext = '';
@@ -59,7 +80,7 @@ export async function POST(req: NextRequest) {
             .join('\n')}`
         : '';
 
-    const systemPrompt = `${agent.system_prompt}${issueContext}${recentContext}${userRole ? `\n\nThe student's role is: ${userRole}` : ''}`;
+    const systemPrompt = `${agent.system_prompt}${documentContext}${issueContext}${recentContext}${userRole ? `\n\nThe student's role is: ${userRole}` : ''}`;
 
     const result = await callLLM(
       {

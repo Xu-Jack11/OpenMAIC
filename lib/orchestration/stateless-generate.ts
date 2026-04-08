@@ -312,6 +312,9 @@ export function finalizeParser(state: ParserState): ParseResult {
  *
  * @param request - The chat request with full state
  * @param abortSignal - Signal for cancellation
+ * @param languageModel - The language model to use
+ * @param thinkingConfig - Optional thinking configuration
+ * @param documentContext - Optional RAG-retrieved document context
  * @yields StatelessEvent objects for streaming
  */
 export async function* statelessGenerate(
@@ -319,6 +322,7 @@ export async function* statelessGenerate(
   abortSignal: AbortSignal,
   languageModel: LanguageModel,
   thinkingConfig?: ThinkingConfig,
+  documentContext?: string | null,
 ): AsyncGenerator<StatelessEvent> {
   log.info(
     `[StatelessGenerate] Starting orchestration for agents: ${request.config.agentIds.join(', ')}`,
@@ -329,7 +333,7 @@ export async function* statelessGenerate(
 
   try {
     const graph = createOrchestrationGraph();
-    const initialState = buildInitialState(request, languageModel, thinkingConfig);
+    const initialState = buildInitialState(request, languageModel, thinkingConfig, documentContext);
 
     const stream = await graph.stream(initialState, {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

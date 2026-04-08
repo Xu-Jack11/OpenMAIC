@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../lib/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 enum Role {
@@ -107,10 +109,30 @@ model Document {
   sizeBytes   Int
   /// Relative path: data/documents/{courseId}/{docId}.{ext}
   storagePath String
+  /// Indexing status: pending, indexing, indexed, failed
+  indexStatus String   @default("pending")
+  indexError  String?
   createdAt   DateTime @default(now())
+
+  chunks DocumentChunk[]
 
   @@index([courseId])
   @@map("documents")
+}
+
+/// Document chunks for RAG retrieval
+model DocumentChunk {
+  id         String                      @id @default(cuid())
+  documentId String
+  document   Document                    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String
+  embedding  Unsupported("vector(1536)")?
+  chunkIndex Int
+  metadata   Json?
+  createdAt  DateTime                    @default(now())
+
+  @@index([documentId])
+  @@map("document_chunks")
 }
 
 model InvitationCode {

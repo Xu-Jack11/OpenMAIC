@@ -36,6 +36,8 @@ export async function generateSceneOutlinesFromRequirements(
     videoGenerationEnabled?: boolean;
     researchContext?: string;
     teacherContext?: string;
+    /** RAG-retrieved course document context */
+    documentContext?: string;
   },
 ): Promise<GenerationResult<SceneOutline[]>> {
   // Build available images description for the prompt
@@ -109,6 +111,8 @@ export async function generateSceneOutlinesFromRequirements(
     mediaGenerationPolicy,
     researchContext:
       options?.researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
+    documentContext:
+      options?.documentContext || (requirements.language === 'zh-CN' ? '无课程文档' : 'No course documents'),
     // Server-side generation populates this via options; client-side populates via formatTeacherPersonaForPrompt
     teacherContext: options?.teacherContext || '',
   });

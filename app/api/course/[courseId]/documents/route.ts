@@ -1,10 +1,14 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { type NextRequest } from 'next/server';
+import { after, type NextRequest } from 'next/server';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/server/db';
 import { authenticate, authenticateCourse } from '@/lib/server/auth/middleware';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
+import { indexDocument } from '@/lib/rag';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('Documents API');
 
 const DOCUMENTS_DIR = path.join(process.cwd(), 'data', 'documents');
 
@@ -36,6 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ cour
       name: d.name,
       mimeType: d.mimeType,
       sizeBytes: d.sizeBytes,
+      indexStatus: d.indexStatus,
       uploader: d.uploader,
       createdAt: d.createdAt,
     })),
@@ -80,7 +85,18 @@ export async function POST(
       mimeType: file.type,
       sizeBytes: file.size,
       storagePath: path.relative(process.cwd(), storagePath),
+      indexStatus: 'pending',
     },
+  });
+
+  // Trigger async indexing for RAG
+  after(async () => {
+    try {
+      log.info(`Starting async indexing for document: ${document.id}`);
+      await indexDocument(document.id);
+    } catch (err) {
+      log.error(`Failed to index document ${document.id}:`, err);
+    }
   });
 
   return apiSuccess(
@@ -90,6 +106,7 @@ export async function POST(
         name: document.name,
         mimeType: document.mimeType,
         sizeBytes: document.sizeBytes,
+        indexStatus: document.indexStatus,
         createdAt: document.createdAt,
       },
     },

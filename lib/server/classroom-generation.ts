@@ -27,6 +27,7 @@ import {
   replaceMediaPlaceholders,
   generateTTSForClassroom,
 } from '@/lib/server/classroom-media-generation';
+import { buildDocumentContext } from '@/lib/rag';
 import type { UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
@@ -42,6 +43,8 @@ export interface GenerateClassroomInput {
   enableVideoGeneration?: boolean;
   enableTTS?: boolean;
   agentMode?: 'default' | 'generate';
+  /** Course ID for RAG document retrieval */
+  courseId?: string;
 }
 
 export type ClassroomGenerationStep =
@@ -289,6 +292,25 @@ export async function generateClassroom(
     scenesGenerated: 0,
   });
 
+  let documentContext: string | undefined;
+  if (input.courseId) {
+    try {
+      log.info(`Retrieving document context for course ${input.courseId}`);
+      const ragContext = await buildDocumentContext({
+        courseId: input.courseId,
+        query: requirement,
+        topK: 8,
+        maxTokens: 3000,
+      });
+      if (ragContext) {
+        documentContext = ragContext.text;
+        log.info(`Retrieved ${ragContext.sources.length} document sources for context`);
+      }
+    } catch (e) {
+      log.warn('Failed to retrieve document context, continuing without RAG:', e);
+    }
+  }
+
   const outlinesResult = await generateSceneOutlinesFromRequirements(
     requirements,
     pdfText,
@@ -300,6 +322,7 @@ export async function generateClassroom(
       videoGenerationEnabled: input.enableVideoGeneration,
       researchContext,
       teacherContext,
+      documentContext,
     },
   );
 
