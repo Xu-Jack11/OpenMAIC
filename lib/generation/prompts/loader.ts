@@ -23,7 +23,11 @@ const snippetCache = new Map<string, string>();
  */
 function getPromptsDir(): string {
   // In Next.js, use process.cwd() for the project root
-  return path.join(process.cwd(), 'lib', 'generation', 'prompts');
+  const cwd = process.cwd();
+  if (!cwd) {
+    throw new Error('process.cwd() returned undefined — cannot locate prompts directory');
+  }
+  return path.join(cwd, 'lib', 'generation', 'prompts');
 }
 
 /**
@@ -62,7 +66,9 @@ export function loadPrompt(promptId: PromptId): LoadedPrompt | null {
   const cached = promptCache.get(promptId);
   if (cached) return cached;
 
-  const promptDir = path.join(getPromptsDir(), 'templates', promptId);
+  const promptsDir = getPromptsDir();
+  log.info(`loadPrompt: promptsDir=${promptsDir}, promptId=${promptId}`);
+  const promptDir = path.join(promptsDir, 'templates', promptId);
 
   try {
     // Load system.md

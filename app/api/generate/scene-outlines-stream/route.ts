@@ -31,9 +31,13 @@ import type {
   SceneOutline,
   ImageMapping,
 } from '@/lib/types/generation';
+import { buildDocumentContext } from '@/lib/rag';
+import { analyzeRequirement } from '@/lib/generation/requirement-analyzer';
+import { callLLM } from '@/lib/ai/llm';
 import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromHeaders } from '@/lib/server/resolve-model';
+import { prisma } from '@/lib/server/db';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -111,7 +115,7 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Requirements are required');
     }
 
-    const { requirements, pdfText, pdfImages, imageMapping, researchContext, agents, enabledPluginIds } = body as {
+    const { requirements, pdfText, pdfImages, imageMapping, researchContext, agents, enabledPluginIds, courseId } = body as {
       requirements: UserRequirements;
       pdfText?: string;
       pdfImages?: PdfImage[];
@@ -119,6 +123,7 @@ export async function POST(req: NextRequest) {
       researchContext?: string;
       agents?: AgentInfo[];
       enabledPluginIds?: string[];
+      courseId?: string;
     };
     requirementSnippet = requirements?.requirement?.substring(0, 60);
 
@@ -183,8 +188,87 @@ export async function POST(req: NextRequest) {
       ? getPluginGuidance(enabledPluginIds, requirements.language)
       : '';
 
+    // Step 1: fetch indexed course documents (stable order) for analysis
+    let availableDocuments: Array<{ id: string; name: string }> | undefined;
+    if (courseId) {
+      try {
+        const docs = await prisma.document.findMany({
+          where: { courseId, indexStatus: 'indexed' },
+          select: { id: true, name: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (docs.length > 0) {
+          availableDocuments = docs;
+        }
+      } catch (e) {
+        log.warn('Failed to fetch available course documents, continuing without doc list:', e);
+      }
+    }
+
+    // Build user profile string
+    const userProfileText =
+      requirements.userNickname || requirements.userBio
+        ? `## Student Profile\n\nStudent: ${requirements.userNickname || 'Unknown'}${requirements.userBio ? ` — ${requirements.userBio}` : ''}\n\nConsider this student's background when designing the course. Adapt difficulty, examples, and teaching approach accordingly.\n\n---`
+        : '';
+
+    // Analyze user intent and enrich requirement before outline generation
+    const analysisAiCall = async (sys: string, usr: string) => {
+      const result = await callLLM(
+        {
+          model: languageModel,
+          messages: [
+            { role: 'system', content: sys },
+            { role: 'user', content: usr },
+          ],
+          maxOutputTokens: modelInfo?.outputWindow,
+        },
+        'requirement-analysis',
+      );
+      return result.text;
+    };
+
+    // Step 2: analyze requirement before RAG retrieval
+    const analysis = await analyzeRequirement(requirements.requirement, requirements.language, analysisAiCall, {
+      pdfContent: pdfText,
+      researchContext,
+      userProfile: userProfileText,
+      availableDocuments,
+    });
+    const effectiveRequirement = analysis?.enrichedRequirement || requirements.requirement;
+    if (analysis) {
+      log.info(
+        `Requirement enriched: "${analysis.topic}" (${analysis.audience}, ${analysis.depth}), ragQuery="${analysis.ragQuery}", docFilterCount=${analysis.referencedDocumentIds.length}`,
+      );
+    }
+
+    // Step 3: use analysis output to retrieve RAG context
+    let documentContext: string | undefined;
+    if (courseId) {
+      try {
+        const ragQuery = analysis?.ragQuery || requirements.requirement;
+        const docIds = analysis?.referencedDocumentIds?.length
+          ? analysis.referencedDocumentIds
+          : undefined;
+        const ragContext = await buildDocumentContext({
+          courseId,
+          query: ragQuery,
+          topK: 8,
+          maxTokens: 3000,
+          documentIds: docIds,
+        });
+        if (ragContext) {
+          documentContext = ragContext.text;
+          log.info(
+            `Retrieved ${ragContext.sources.length} document sources for outline context (ragQuery="${ragQuery.substring(0, 60)}", docIds=[${(docIds ?? []).join(',')}])`,
+          );
+        }
+      } catch (e) {
+        log.warn('Failed to retrieve document context, continuing without RAG:', e);
+      }
+    }
+
     const prompts = buildPrompt(PROMPT_IDS.REQUIREMENTS_TO_OUTLINES, {
-      requirement: requirements.requirement,
+      requirement: effectiveRequirement,
       language: requirements.language,
       pdfContent: pdfText
         ? pdfText.substring(0, MAX_PDF_CONTENT_CHARS)
@@ -193,6 +277,9 @@ export async function POST(req: NextRequest) {
           : 'None',
       availableImages: availableImagesText,
       researchContext: researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
+      documentContext:
+        documentContext || (requirements.language === 'zh-CN' ? '无课程文档' : 'No course documents'),
+      userProfile: userProfileText,
       mediaGenerationPolicy,
       teacherContext,
       pluginGuidance,
@@ -203,7 +290,7 @@ export async function POST(req: NextRequest) {
     }
 
     log.info(
-      `Generating outlines: "${requirements.requirement.substring(0, 50)}" [model=${modelString}]`,
+      `Generating outlines: "${effectiveRequirement.substring(0, 80)}" [model=${modelString}]`,
     );
 
     // Create SSE stream with heartbeat to prevent connection timeout

@@ -6,6 +6,7 @@
  * Prompt template identifier
  */
 export type PromptId =
+  | 'requirement-analysis'
   | 'requirements-to-outlines'
   | 'web-search-query-rewrite'
   | 'slide-content'

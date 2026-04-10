@@ -28,6 +28,8 @@ import {
   generateTTSForClassroom,
 } from '@/lib/server/classroom-media-generation';
 import { buildDocumentContext } from '@/lib/rag';
+import { analyzeRequirement } from '@/lib/generation/requirement-analyzer';
+import { prisma } from '@/lib/server/db';
 import type { UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
@@ -292,19 +294,56 @@ export async function generateClassroom(
     scenesGenerated: 0,
   });
 
+  // Step 1: fetch indexed course documents (stable order) for analysis
+  let availableDocuments: Array<{ id: string; name: string }> | undefined;
+  if (input.courseId) {
+    try {
+      const docs = await prisma.document.findMany({
+        where: { courseId: input.courseId, indexStatus: 'indexed' },
+        select: { id: true, name: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (docs.length > 0) {
+        availableDocuments = docs;
+      }
+    } catch (e) {
+      log.warn('Failed to fetch available course documents, continuing without doc list:', e);
+    }
+  }
+
+  // Step 2: analyze user intent before RAG retrieval
+  const analysis = await analyzeRequirement(requirement, lang, aiCall, {
+    pdfContent: pdfText,
+    researchContext,
+    availableDocuments,
+  });
+  if (analysis) {
+    log.info(
+      `Requirement enriched: "${analysis.topic}" (${analysis.audience}, ${analysis.depth}), ragQuery="${analysis.ragQuery}", docFilterCount=${analysis.referencedDocumentIds.length}`,
+    );
+    requirements.requirement = analysis.enrichedRequirement;
+  }
+
+  // Step 3: retrieve document context using analyzed RAG query + optional doc filters
   let documentContext: string | undefined;
   if (input.courseId) {
     try {
-      log.info(`Retrieving document context for course ${input.courseId}`);
+      const ragQuery = analysis?.ragQuery || requirement;
+      const docIds = analysis?.referencedDocumentIds?.length
+        ? analysis.referencedDocumentIds
+        : undefined;
       const ragContext = await buildDocumentContext({
         courseId: input.courseId,
-        query: requirement,
+        query: ragQuery,
         topK: 8,
         maxTokens: 3000,
+        documentIds: docIds,
       });
       if (ragContext) {
         documentContext = ragContext.text;
-        log.info(`Retrieved ${ragContext.sources.length} document sources for context`);
+        log.info(
+          `Retrieved ${ragContext.sources.length} document sources for context (ragQuery="${ragQuery.substring(0, 60)}", docIds=[${(docIds ?? []).join(',')}])`,
+        );
       }
     } catch (e) {
       log.warn('Failed to retrieve document context, continuing without RAG:', e);
