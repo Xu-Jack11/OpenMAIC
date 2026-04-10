@@ -1,10 +1,14 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { type NextRequest } from 'next/server';
+import { after, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/server/db';
 import { authenticate, authenticateCourse } from '@/lib/server/auth/middleware';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { NextResponse } from 'next/server';
+import { reindexDocument } from '@/lib/rag';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('Document Detail API');
 
 export async function GET(
   req: NextRequest,
@@ -64,4 +68,40 @@ export async function DELETE(
   await prisma.document.delete({ where: { id: docId } });
 
   return apiSuccess({ message: 'Document deleted' });
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ courseId: string; docId: string }> },
+) {
+  const { courseId, docId } = await params;
+  const auth = await authenticateCourse(req, courseId, 'TEACHER');
+  if (!auth) return apiError('FORBIDDEN', 403, 'Insufficient course role');
+
+  const document = await prisma.document.findFirst({
+    where: { id: docId, courseId },
+  });
+  if (!document) return apiError('NOT_FOUND', 404, 'Document not found');
+
+  // Mark as pending immediately so UI can switch to loading state.
+  await prisma.document.update({
+    where: { id: docId },
+    data: { indexStatus: 'pending', indexError: null },
+  });
+
+  after(async () => {
+    try {
+      log.info(`Starting retry indexing for document: ${docId}`);
+      await reindexDocument(docId);
+    } catch (error) {
+      log.error(`Retry indexing failed for document ${docId}:`, error);
+    }
+  });
+
+  return apiSuccess({
+    document: {
+      id: docId,
+      indexStatus: 'pending',
+    },
+  });
 }

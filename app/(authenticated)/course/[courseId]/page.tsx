@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useCourseAuthStore } from '@/lib/store/course-auth';
 import { getClientTranslation } from '@/lib/i18n';
 import { CreateClassroomDialog } from '@/components/course/create-classroom-dialog';
+import { DeleteCourseDialog } from '@/components/course/delete-course-dialog';
 
 interface ClassroomItem {
   id: string;
@@ -29,6 +31,7 @@ interface DocumentItem {
   name: string;
   mimeType: string;
   sizeBytes: number;
+  indexStatus: 'pending' | 'indexing' | 'indexed' | 'failed';
   uploader: { id: string; name: string };
   createdAt: string;
 }
@@ -49,7 +52,7 @@ export default function CourseDashboardPage() {
   const params = useParams();
   const router = useRouter();
   const courseId = params?.courseId as string;
-  const { user, currentCourse, isTeacher } = useCourseAuthStore();
+  const { user, currentCourse, isTeacher, removeCourse } = useCourseAuthStore();
   const t = (k: string) => getClientTranslation(k);
 
   const [tab, setTab] = useState<Tab>('classrooms');
@@ -57,10 +60,17 @@ export default function CourseDashboardPage() {
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [invitations, setInvitations] = useState<InviteItem[]>([]);
+  const [retryingDocumentIds, setRetryingDocumentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [courseDetail, setCourseDetail] = useState<{ creatorId: string; name: string } | null>(
+    null,
+  );
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  const isCreator = !!courseDetail && !!user && courseDetail.creatorId === user.id;
 
   const loadClassrooms = useCallback(async () => {
     const res = await fetch(`/api/course/${courseId}/classrooms`);
@@ -87,13 +97,44 @@ export default function CourseDashboardPage() {
     if (json.success) setInvitations(json.invitations);
   }, [courseId, isTeacher]);
 
+  const loadCourseDetail = useCallback(async () => {
+    const res = await fetch(`/api/course/${courseId}`);
+    const json = await res.json();
+    if (json.success && json.course) {
+      setCourseDetail({ creatorId: json.course.creatorId, name: json.course.name });
+    }
+  }, [courseId]);
+
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading gate is intentional before parallel fetches
     setLoading(true);
-    Promise.all([loadClassrooms(), loadMembers(), loadDocuments(), loadInvitations()])
+    Promise.all([
+      loadClassrooms(),
+      loadMembers(),
+      loadDocuments(),
+      loadInvitations(),
+      loadCourseDetail(),
+    ])
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [courseId, loadClassrooms, loadMembers, loadDocuments, loadInvitations]);
+  }, [courseId, loadClassrooms, loadMembers, loadDocuments, loadInvitations, loadCourseDetail]);
+
+  useEffect(() => {
+    const hasPendingIndexing = documents.some(
+      (doc) => doc.indexStatus === 'pending' || doc.indexStatus === 'indexing',
+    );
+
+    if (!hasPendingIndexing) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      loadDocuments().catch(() => {
+        // Keep silent here to avoid interrupting user interaction due to transient polling errors.
+      });
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [documents, loadDocuments]);
 
   function handleOpenCreateDialog() {
     setShowCreateDialog(true);
@@ -125,6 +166,26 @@ export default function CourseDashboardPage() {
       method: 'DELETE',
     });
     await loadDocuments();
+  }
+
+  async function handleRetryDocumentIndex(docId: string) {
+    if (retryingDocumentIds.includes(docId)) return;
+
+    setRetryingDocumentIds((prev) => [...prev, docId]);
+    try {
+      const res = await fetch(`/api/course/${courseId}/documents/${docId}`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (!json.success) {
+        throw new Error(json.error || 'Failed to retry document indexing');
+      }
+      await loadDocuments();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetryingDocumentIds((prev) => prev.filter((id) => id !== docId));
+    }
   }
 
   async function handleRemoveMember(memberId: string) {
@@ -168,13 +229,39 @@ export default function CourseDashboardPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Course title */}
-        <h1 className="text-xl font-semibold mb-6">{currentCourse?.name}</h1>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-xl font-semibold">{courseDetail?.name ?? currentCourse?.name}</h1>
+          {isCreator && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteDialog(true)}
+              data-testid="delete-course-button"
+              className="text-sm text-muted-foreground hover:text-destructive transition-colors"
+            >
+              {t('course.deleteCourse')}
+            </button>
+          )}
+        </div>
 
         <CreateClassroomDialog
           courseId={courseId}
           open={showCreateDialog}
           onOpenChange={setShowCreateDialog}
         />
+
+        {courseDetail && (
+          <DeleteCourseDialog
+            courseId={courseId}
+            courseName={courseDetail.name}
+            open={showDeleteDialog}
+            onOpenChange={setShowDeleteDialog}
+            onDeleted={() => {
+              setShowDeleteDialog(false);
+              removeCourse(courseId);
+              router.push('/');
+            }}
+          />
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-gray-700">
@@ -352,9 +439,48 @@ export default function CourseDashboardPage() {
                 >
                   <div>
                     <p className="font-medium">{d.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(d.sizeBytes / 1024).toFixed(1)} KB &middot; {d.uploader.name}
-                    </p>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                      <span>
+                        {(d.sizeBytes / 1024).toFixed(1)} KB &middot; {d.uploader.name}
+                      </span>
+                      {(d.indexStatus === 'pending' || d.indexStatus === 'indexing') && (
+                        <span
+                          className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+                          title={t(
+                            d.indexStatus === 'pending'
+                              ? 'course.documentIndexPending'
+                              : 'course.documentIndexing',
+                          )}
+                        >
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>
+                            {t(
+                              d.indexStatus === 'pending'
+                                ? 'course.documentIndexPending'
+                                : 'course.documentIndexing',
+                            )}
+                          </span>
+                        </span>
+                      )}
+                      {d.indexStatus === 'indexed' && (
+                        <span
+                          className="inline-flex items-center gap-1 text-green-600 dark:text-green-400"
+                          title={t('course.documentIndexed')}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>{t('course.documentIndexed')}</span>
+                        </span>
+                      )}
+                      {d.indexStatus === 'failed' && (
+                        <span
+                          className="inline-flex items-center gap-1 text-red-600 dark:text-red-400"
+                          title={t('course.documentIndexFailed')}
+                        >
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          <span>{t('course.documentIndexFailed')}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <a
@@ -365,6 +491,17 @@ export default function CourseDashboardPage() {
                     >
                       {t('files.download')}
                     </a>
+                    {isTeacher() && d.indexStatus === 'failed' && (
+                      <button
+                        onClick={() => handleRetryDocumentIndex(d.id)}
+                        disabled={retryingDocumentIds.includes(d.id)}
+                        className="text-sm text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {retryingDocumentIds.includes(d.id)
+                          ? t('course.retryingDocumentIndex')
+                          : t('course.retryDocumentIndex')}
+                      </button>
+                    )}
                     {isTeacher() && (
                       <button
                         onClick={() => handleDeleteDocument(d.id)}

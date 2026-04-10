@@ -1,7 +1,13 @@
+import { promises as fs } from 'fs';
+import path from 'path';
 import { type NextRequest } from 'next/server';
 import { prisma } from '@/lib/server/db';
 import { authenticate, authenticateCourse } from '@/lib/server/auth/middleware';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
+import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('Course DELETE');
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
@@ -79,7 +85,37 @@ export async function DELETE(
     return apiError('FORBIDDEN', 403, 'Only the course creator can delete the course');
   }
 
-  // Cascade deletes via Prisma relations
+  // Clean up on-disk artifacts before cascading the DB delete.
+  // Filesystem errors are logged but do NOT block the DB delete — orphan files
+  // are recoverable, but a stuck DB row is worse.
+  try {
+    const classrooms = await prisma.classroom.findMany({
+      where: { courseId },
+      select: { storageId: true },
+    });
+    for (const { storageId } of classrooms) {
+      if (storageId.startsWith('job:') || storageId.startsWith('failed:')) continue;
+      const filePath = path.join(CLASSROOMS_DIR, `${storageId}.json`);
+      try {
+        await fs.unlink(filePath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          log.warn(`Failed to unlink classroom file ${filePath}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    log.warn('Failed to enumerate classrooms for cleanup:', err);
+  }
+
+  try {
+    const documentsDir = path.join(process.cwd(), 'data', 'documents', courseId);
+    await fs.rm(documentsDir, { recursive: true, force: true });
+  } catch (err) {
+    log.warn('Failed to remove documents directory:', err);
+  }
+
+  // Cascade deletes via Prisma relations (classrooms, documents, chunks, members, invites)
   await prisma.course.delete({ where: { id: courseId } });
 
   return apiSuccess({ message: 'Course deleted' });

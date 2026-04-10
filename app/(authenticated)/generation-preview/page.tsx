@@ -562,6 +562,7 @@ function GenerationPreviewContent() {
               researchContext: currentSession.researchContext,
               agents,
               enabledPluginIds: settings.enabledPluginIds,
+              courseId: sessionStorage.getItem('generationCourseId') || undefined,
             }),
             signal,
           })

@@ -26,6 +26,7 @@ interface CourseAuthState {
   setSession: (token: string | null, user: CourseUser, course: CourseInfo) => void;
   setLoginSession: (token: string | null, user: CourseUser, courses: CourseInfo[]) => void;
   switchCourse: (course: CourseInfo) => void;
+  removeCourse: (courseId: string) => void;
   clearSession: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
   isTeacher: () => boolean;
@@ -48,6 +49,16 @@ export const useCourseAuthStore = create<CourseAuthState>()(
         set({ token, user, courses, currentCourse: courses[0] ?? null }),
 
       switchCourse: (course) => set({ currentCourse: course }),
+
+      removeCourse: (courseId) => {
+        const { courses, currentCourse } = get();
+        const next = courses.filter((c) => c.id !== courseId);
+        set({
+          courses: next,
+          currentCourse:
+            currentCourse?.id === courseId ? (next[0] ?? null) : currentCourse,
+        });
+      },
 
       clearSession: async () => {
         try {
