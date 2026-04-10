@@ -184,9 +184,7 @@ async function generateOpenAIEmbeddings(
 
         if (attempt < maxAttempts && RETRYABLE_STATUSES.has(response.status)) {
           const delay = EMBEDDING_RETRY_BASE_DELAY_MS * attempt;
-          log.warn(
-            `${errorMessage}. Retrying (${attempt}/${maxAttempts}) after ${delay}ms...`,
-          );
+          log.warn(`${errorMessage}. Retrying (${attempt}/${maxAttempts}) after ${delay}ms...`);
           await sleep(delay);
           continue;
         }

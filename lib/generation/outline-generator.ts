@@ -114,7 +114,8 @@ export async function generateSceneOutlinesFromRequirements(
     researchContext:
       options?.researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
     documentContext:
-      options?.documentContext || (requirements.language === 'zh-CN' ? '无课程文档' : 'No course documents'),
+      options?.documentContext ||
+      (requirements.language === 'zh-CN' ? '无课程文档' : 'No course documents'),
     // Server-side generation populates this via options; client-side populates via formatTeacherPersonaForPrompt
     teacherContext: options?.teacherContext || '',
     pluginGuidance: options?.pluginGuidance || '',

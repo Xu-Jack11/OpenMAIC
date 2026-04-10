@@ -55,8 +55,7 @@ export const useCourseAuthStore = create<CourseAuthState>()(
         const next = courses.filter((c) => c.id !== courseId);
         set({
           courses: next,
-          currentCourse:
-            currentCourse?.id === courseId ? (next[0] ?? null) : currentCourse,
+          currentCourse: currentCourse?.id === courseId ? (next[0] ?? null) : currentCourse,
         });
       },
 

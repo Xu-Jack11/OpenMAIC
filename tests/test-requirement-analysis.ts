@@ -28,7 +28,9 @@ const prompts = buildPrompt(PROMPT_IDS.REQUIREMENT_ANALYSIS, {
   documentContext: none,
   researchContext: none,
   userProfile: none,
-  availableDocuments: MOCK_AVAILABLE_DOCUMENTS.map((doc) => `- ${doc.name} (ID: ${doc.id})`).join('\n'),
+  availableDocuments: MOCK_AVAILABLE_DOCUMENTS.map((doc) => `- ${doc.name} (ID: ${doc.id})`).join(
+    '\n',
+  ),
 });
 
 if (!prompts) {
@@ -61,25 +63,26 @@ console.log();
 console.log('='.repeat(80));
 console.log('EXPECTED LLM OUTPUT SCHEMA:');
 console.log('='.repeat(80));
-console.log(JSON.stringify(
-  {
-    topic: 'string - Core topic inferred from document names/themes',
-    subTopics: ["string - sub-topics from document themes"],
-    audience: 'beginner | intermediate | advanced',
-    audienceDescription: 'string',
-    depth: 'overview | working-knowledge | deep-dive',
-    estimatedDurationMinutes: 'number',
-    style: 'lecture | hands-on | discussion | case-study | mixed',
-    focusAreas: ["string - key areas from document"],
-    prerequisites: ["string"],
-    enrichedRequirement:
-      'string - detailed paragraph combining user intent + document themes',
-    ragQuery: 'string - concise topic-focused query for vector similarity search',
-    referencedDocumentIds: ['doc-001', 'doc-002'],
-  },
-  null,
-  2,
-));
+console.log(
+  JSON.stringify(
+    {
+      topic: 'string - Core topic inferred from document names/themes',
+      subTopics: ['string - sub-topics from document themes'],
+      audience: 'beginner | intermediate | advanced',
+      audienceDescription: 'string',
+      depth: 'overview | working-knowledge | deep-dive',
+      estimatedDurationMinutes: 'number',
+      style: 'lecture | hands-on | discussion | case-study | mixed',
+      focusAreas: ['string - key areas from document'],
+      prerequisites: ['string'],
+      enrichedRequirement: 'string - detailed paragraph combining user intent + document themes',
+      ragQuery: 'string - concise topic-focused query for vector similarity search',
+      referencedDocumentIds: ['doc-001', 'doc-002'],
+    },
+    null,
+    2,
+  ),
+);
 
 console.log();
 console.log('VALIDATION CHECKS:');

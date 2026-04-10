@@ -115,13 +115,14 @@ export async function indexDocument(
 
     // Strip base64-encoded images/data URIs before chunking — they bloat chunks
     // and are meaningless for text embedding
-    const cleanedText = parsed.text.replace(
-      /!\[([^\]]*)\]\(data:[^)]+\)/g,
-      (_, alt) => (alt ? `[image: ${alt}]` : '[image]'),
+    const cleanedText = parsed.text.replace(/!\[([^\]]*)\]\(data:[^)]+\)/g, (_, alt) =>
+      alt ? `[image: ${alt}]` : '[image]',
     );
 
     // Chunk the document
-    log.info(`Chunking document: ${cleanedText.length} chars (original: ${parsed.text.length} chars)`);
+    log.info(
+      `Chunking document: ${cleanedText.length} chars (original: ${parsed.text.length} chars)`,
+    );
     const chunks = chunkDocument(cleanedText, document.name, docType, config);
 
     if (chunks.length === 0) {

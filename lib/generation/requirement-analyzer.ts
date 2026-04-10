@@ -68,9 +68,7 @@ export async function analyzeRequirement(
   const prompts = buildPrompt(PROMPT_IDS.REQUIREMENT_ANALYSIS, {
     requirement,
     language,
-    pdfContent: context?.pdfContent
-      ? context.pdfContent.substring(0, MAX_PDF_CONTENT_CHARS)
-      : none,
+    pdfContent: context?.pdfContent ? context.pdfContent.substring(0, MAX_PDF_CONTENT_CHARS) : none,
     documentContext: context?.documentContext || none,
     researchContext: context?.researchContext || none,
     userProfile: context?.userProfile || none,
@@ -85,7 +83,9 @@ export async function analyzeRequirement(
   }
 
   try {
-    log.info(`analyzeRequirement called: cwd=${process.cwd()}, promptId=${PROMPT_IDS.REQUIREMENT_ANALYSIS}`);
+    log.info(
+      `analyzeRequirement called: cwd=${process.cwd()}, promptId=${PROMPT_IDS.REQUIREMENT_ANALYSIS}`,
+    );
     const response = await aiCall(prompts.system, prompts.user);
     const analysis = parseJsonResponse<RequirementAnalysis>(response);
 

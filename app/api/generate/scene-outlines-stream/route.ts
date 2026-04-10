@@ -115,7 +115,16 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Requirements are required');
     }
 
-    const { requirements, pdfText, pdfImages, imageMapping, researchContext, agents, enabledPluginIds, courseId } = body as {
+    const {
+      requirements,
+      pdfText,
+      pdfImages,
+      imageMapping,
+      researchContext,
+      agents,
+      enabledPluginIds,
+      courseId,
+    } = body as {
       requirements: UserRequirements;
       pdfText?: string;
       pdfImages?: PdfImage[];
@@ -228,12 +237,17 @@ export async function POST(req: NextRequest) {
     };
 
     // Step 2: analyze requirement before RAG retrieval
-    const analysis = await analyzeRequirement(requirements.requirement, requirements.language, analysisAiCall, {
-      pdfContent: pdfText,
-      researchContext,
-      userProfile: userProfileText,
-      availableDocuments,
-    });
+    const analysis = await analyzeRequirement(
+      requirements.requirement,
+      requirements.language,
+      analysisAiCall,
+      {
+        pdfContent: pdfText,
+        researchContext,
+        userProfile: userProfileText,
+        availableDocuments,
+      },
+    );
     const effectiveRequirement = analysis?.enrichedRequirement || requirements.requirement;
     if (analysis) {
       log.info(
@@ -278,7 +292,8 @@ export async function POST(req: NextRequest) {
       availableImages: availableImagesText,
       researchContext: researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
       documentContext:
-        documentContext || (requirements.language === 'zh-CN' ? '无课程文档' : 'No course documents'),
+        documentContext ||
+        (requirements.language === 'zh-CN' ? '无课程文档' : 'No course documents'),
       userProfile: userProfileText,
       mediaGenerationPolicy,
       teacherContext,

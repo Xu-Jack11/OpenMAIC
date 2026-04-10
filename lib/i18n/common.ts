@@ -140,7 +140,8 @@ export const commonZhCN = {
     deleteClassroom: '删除课堂',
     deleteCourse: '删除课程',
     deleteCourseDialogTitle: '删除课程',
-    deleteCourseDialogWarning: '此操作将永久删除该课程及其全部课堂、文件、成员与邀请码，且无法恢复。',
+    deleteCourseDialogWarning:
+      '此操作将永久删除该课程及其全部课堂、文件、成员与邀请码，且无法恢复。',
     deleteCourseConfirmLabel: '请输入课程名称 "{name}" 以确认',
     deleteCourseConfirmButton: '永久删除',
     deleteCourseCancelButton: '取消',

@@ -826,28 +826,23 @@ function GenerationPreviewContent() {
         return;
       }
 
-      const importRes = await fetch(
-        `/api/course/${generationCourseId}/classrooms/import`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Read latest Zustand snapshot to avoid stale closure state.
-          // `store` captured earlier may still hold old `scenes` reference.
-          body: JSON.stringify({
-            stage,
-            scenes: useStageStore.getState().scenes,
-            name: stage.name,
-            language: stage.language,
-            style: stage.style,
-          }),
-        },
-      );
+      const importRes = await fetch(`/api/course/${generationCourseId}/classrooms/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Read latest Zustand snapshot to avoid stale closure state.
+        // `store` captured earlier may still hold old `scenes` reference.
+        body: JSON.stringify({
+          stage,
+          scenes: useStageStore.getState().scenes,
+          name: stage.name,
+          language: stage.language,
+          style: stage.style,
+        }),
+      });
       const importJson = await importRes.json();
       if (importJson.success) {
         sessionStorage.removeItem('generationCourseId');
-        router.push(
-          `/course/${generationCourseId}/classroom/${importJson.classroomId}`,
-        );
+        router.push(`/course/${generationCourseId}/classroom/${importJson.classroomId}`);
       } else {
         setError(importJson.error ?? 'Failed to save classroom');
       }

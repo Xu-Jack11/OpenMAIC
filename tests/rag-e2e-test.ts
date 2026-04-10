@@ -95,9 +95,7 @@ async function main() {
   // 5. Retrieve
   console.log('\n=== Step 5: Retrieve (query: "什么是深度学习") ===');
   const qEmb = await generateEmbedding('什么是深度学习');
-  const results = await prisma.$queryRawUnsafe<
-    Array<{ content: string; similarity: number }>
-  >(
+  const results = await prisma.$queryRawUnsafe<Array<{ content: string; similarity: number }>>(
     `SELECT dc.content, 1 - (dc.embedding <=> $1::vector) as similarity
      FROM document_chunks dc JOIN documents d ON dc."documentId" = d.id
      WHERE d."courseId" = $2 AND dc.embedding IS NOT NULL
