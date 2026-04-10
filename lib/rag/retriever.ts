@@ -20,7 +20,16 @@ const DEFAULT_SIMILARITY_THRESHOLD = 0.7;
  * Retrieve relevant document chunks for a query
  */
 export async function retrieveChunks(options: RetrievalOptions): Promise<RetrievedChunk[]> {
-  const { courseId, query, topK = DEFAULT_TOP_K, similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD } = options;
+  const {
+    courseId,
+    query,
+    topK = DEFAULT_TOP_K,
+    similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD,
+    documentIds,
+  } = options;
+  const normalizedDocumentIds = documentIds?.length
+    ? [...new Set(documentIds.filter((id) => id.trim().length > 0))]
+    : null;
 
   log.info(`Retrieving chunks for course ${courseId}, query length: ${query.length}`);
 
@@ -52,12 +61,14 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
     WHERE d."courseId" = $2
       AND dc.embedding IS NOT NULL
       AND 1 - (dc.embedding <=> $1::vector) >= $3
+      AND ($5::text[] IS NULL OR dc."documentId" = ANY($5))
     ORDER BY dc.embedding <=> $1::vector
     LIMIT $4`,
     embeddingStr,
     courseId,
     similarityThreshold,
     topK,
+    normalizedDocumentIds,
   );
 
   log.info(`Retrieved ${results.length} relevant chunks`);

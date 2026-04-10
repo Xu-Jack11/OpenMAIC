@@ -47,6 +47,7 @@ export interface RetrievalOptions {
   topK?: number;
   similarityThreshold?: number;
   maxTokens?: number;
+  documentIds?: string[];
 }
 
 /**

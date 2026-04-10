@@ -19,8 +19,62 @@ import type { IndexingResult, ChunkingConfig } from './types';
 
 const log = createLogger('RAG:Indexer');
 
-// Batch size for embedding generation (OpenAI limit is 2048)
-const EMBEDDING_BATCH_SIZE = 100;
+// Batch size for embedding generation — small default to avoid EPIPE on size-limited servers
+const EMBEDDING_BATCH_SIZE = (() => {
+  const parsed = Number.parseInt(process.env.RAG_EMBEDDING_BATCH_SIZE || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
+})();
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isConnectionError(error: unknown): boolean {
+  const msg = getErrorMessage(error);
+  return /ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(msg);
+}
+
+async function embedRangeWithFallback(
+  chunkTexts: string[],
+  start: number,
+  end: number,
+  targetEmbeddings: Array<number[] | undefined>,
+): Promise<void> {
+  const batch = chunkTexts.slice(start, end);
+
+  try {
+    const embeddings = await generateEmbeddings(batch);
+    if (embeddings.length !== batch.length) {
+      throw new Error(
+        `Embedding count mismatch: got ${embeddings.length}, expected ${batch.length}`,
+      );
+    }
+
+    for (let i = 0; i < embeddings.length; i++) {
+      targetEmbeddings[start + i] = embeddings[i];
+    }
+  } catch (error) {
+    const size = end - start;
+
+    // Connection-level failures affect all chunks — no point splitting
+    if (isConnectionError(error)) {
+      throw new Error(
+        `Embedding server unreachable for chunks ${start + 1}-${end}: ${getErrorMessage(error)}`,
+      );
+    }
+
+    if (size <= 1) {
+      throw new Error(`Embedding failed for chunk ${start + 1}: ${getErrorMessage(error)}`);
+    }
+
+    const mid = start + Math.floor(size / 2);
+    log.warn(
+      `Embedding batch failed for chunks ${start + 1}-${end}; splitting into ${start + 1}-${mid} and ${mid + 1}-${end}`,
+    );
+    await embedRangeWithFallback(chunkTexts, start, mid, targetEmbeddings);
+    await embedRangeWithFallback(chunkTexts, mid, end, targetEmbeddings);
+  }
+}
 
 /**
  * Index a document for RAG retrieval
@@ -59,9 +113,16 @@ export async function indexDocument(
     // Determine document type from mime type
     const docType = getDocumentType(document.mimeType);
 
+    // Strip base64-encoded images/data URIs before chunking — they bloat chunks
+    // and are meaningless for text embedding
+    const cleanedText = parsed.text.replace(
+      /!\[([^\]]*)\]\(data:[^)]+\)/g,
+      (_, alt) => (alt ? `[image: ${alt}]` : '[image]'),
+    );
+
     // Chunk the document
-    log.info(`Chunking document: ${parsed.text.length} chars`);
-    const chunks = chunkDocument(parsed.text, document.name, docType, config);
+    log.info(`Chunking document: ${cleanedText.length} chars (original: ${parsed.text.length} chars)`);
+    const chunks = chunkDocument(cleanedText, document.name, docType, config);
 
     if (chunks.length === 0) {
       throw new Error('No chunks created from document');
@@ -76,14 +137,22 @@ export async function indexDocument(
 
     // Generate embeddings in batches
     const chunkTexts = chunks.map((c) => c.content);
-    const allEmbeddings: number[][] = [];
+    const allEmbeddings: Array<number[] | undefined> = new Array(chunkTexts.length);
 
     for (let i = 0; i < chunkTexts.length; i += EMBEDDING_BATCH_SIZE) {
-      const batch = chunkTexts.slice(i, i + EMBEDDING_BATCH_SIZE);
-      log.info(`Generating embeddings batch ${Math.floor(i / EMBEDDING_BATCH_SIZE) + 1}`);
-      const embeddings = await generateEmbeddings(batch);
-      allEmbeddings.push(...embeddings);
+      const batchEnd = Math.min(i + EMBEDDING_BATCH_SIZE, chunkTexts.length);
+      log.info(
+        `Generating embeddings batch ${Math.floor(i / EMBEDDING_BATCH_SIZE) + 1} (chunks ${i + 1}-${batchEnd}/${chunkTexts.length})`,
+      );
+      await embedRangeWithFallback(chunkTexts, i, batchEnd, allEmbeddings);
     }
+
+    const resolvedEmbeddings = allEmbeddings.map((embedding, idx) => {
+      if (!embedding) {
+        throw new Error(`Missing embedding for chunk ${idx + 1}`);
+      }
+      return embedding;
+    });
 
     // Store chunks with embeddings using batched raw SQL for pgvector
     log.info(`Storing ${chunks.length} chunks with embeddings`);
@@ -96,7 +165,7 @@ export async function indexDocument(
 
       for (let i = batchStart; i < batchEnd; i++) {
         const chunk = chunks[i];
-        const embedding = allEmbeddings[i];
+        const embedding = resolvedEmbeddings[i];
         const offset = (i - batchStart) * 6;
         valuePlaceholders.push(
           `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}::vector, $${offset + 5}, $${offset + 6}, NOW())`,
