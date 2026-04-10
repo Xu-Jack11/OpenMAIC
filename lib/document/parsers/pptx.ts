@@ -5,9 +5,7 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('PPTXParser');
 
-export async function parsePptxDocument(
-  fileBuffer: Buffer
-): Promise<ParsedDocumentContent> {
+export async function parsePptxDocument(fileBuffer: Buffer): Promise<ParsedDocumentContent> {
   try {
     // pptxtojson expects ArrayBuffer
     const arrayBuffer = fileBuffer.buffer.slice(
@@ -15,7 +13,7 @@ export async function parsePptxDocument(
       fileBuffer.byteOffset + fileBuffer.byteLength,
     ) as ArrayBuffer;
     const json = await parsePptx(arrayBuffer);
-    
+
     let text = '';
     const images: string[] = [];
     const pdfImages: NonNullable<ParsedDocumentContent['metadata']>['pdfImages'] = [];
@@ -23,13 +21,13 @@ export async function parsePptxDocument(
     let imageCounter = 0;
 
     const slides = json.slides || [];
-    
+
     for (let i = 0; i < slides.length; i++) {
       const slide = slides[i];
       const slideNumber = i + 1;
-      
+
       text += `## Slide ${slideNumber}\n\n`;
-      
+
       const elements = slide.elements || [];
       for (const el of elements) {
         // Cast to any for flexible property access — runtime data may
@@ -39,19 +37,19 @@ export async function parsePptxDocument(
           // PPTXToJson returns text content as `content` (string or array)
           const rawText = elAny.content || '';
           if (typeof rawText === 'string') {
-             text += `${rawText}\n`;
+            text += `${rawText}\n`;
           } else if (Array.isArray(rawText)) {
-             text += rawText.map((t: any) => t?.text || '').join(' ') + '\n';
+            text += rawText.map((t: any) => t?.text || '').join(' ') + '\n';
           }
         } else if (el.type === 'image') {
           const imgSrc: string | undefined = elAny.src || elAny.data;
           if (imgSrc) {
             // Ensure it's a data URL
             const dataUrl = imgSrc.startsWith('data:') ? imgSrc : `data:image/png;base64,${imgSrc}`;
-            
+
             imageCounter++;
             const id = `img_${imageCounter}`;
-            
+
             images.push(dataUrl);
             imageMapping[id] = dataUrl;
             pdfImages.push({

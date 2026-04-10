@@ -520,10 +520,7 @@ export async function getDatabaseStats() {
 /**
  * Get cached plugin result for a stage
  */
-export async function getPluginResult(
-  stageId: string,
-  pluginId: string,
-): Promise<unknown | null> {
+export async function getPluginResult(stageId: string, pluginId: string): Promise<unknown | null> {
   const record = await db.pluginResults.get(pluginResultKey(stageId, pluginId));
   if (!record) return null;
   try {

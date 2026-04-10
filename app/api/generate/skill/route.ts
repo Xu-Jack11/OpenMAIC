@@ -22,7 +22,11 @@ export async function POST(req: NextRequest) {
     const { skillId, promptId, variables, responseKey } = body;
 
     if (!skillId || !promptId || !variables) {
-      return apiError('MISSING_REQUIRED_FIELD', 400, 'skillId, promptId, and variables are required');
+      return apiError(
+        'MISSING_REQUIRED_FIELD',
+        400,
+        'skillId, promptId, and variables are required',
+      );
     }
 
     const { model: languageModel } = resolveModelFromHeaders(req);

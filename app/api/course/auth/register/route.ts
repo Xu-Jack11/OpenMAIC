@@ -2,7 +2,11 @@ import { type NextRequest } from 'next/server';
 import { Prisma } from '@/lib/generated/prisma/client';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { hashPassword } from '@/lib/server/auth/password';
-import { createSessionCookie, generateSessionToken, sessionExpiresAt } from '@/lib/server/auth/tokens';
+import {
+  createSessionCookie,
+  generateSessionToken,
+  sessionExpiresAt,
+} from '@/lib/server/auth/tokens';
 import { prisma } from '@/lib/server/db';
 
 export async function POST(req: NextRequest) {

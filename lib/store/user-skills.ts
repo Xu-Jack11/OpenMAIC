@@ -12,9 +12,7 @@ interface UserSkillStoreState {
   skills: UserSkill[];
   isLoaded: boolean;
   loadUserSkills: () => Promise<void>;
-  addSkill: (
-    skill: Omit<UserSkill, 'id' | 'createdAt' | 'updatedAt'>,
-  ) => Promise<UserSkill>;
+  addSkill: (skill: Omit<UserSkill, 'id' | 'createdAt' | 'updatedAt'>) => Promise<UserSkill>;
   updateSkill: (id: string, updates: Partial<UserSkill>) => Promise<void>;
   deleteSkill: (id: string) => Promise<void>;
   getSkill: (id: string) => UserSkill | undefined;

@@ -34,7 +34,9 @@ export async function autoGeneratePlugins(
     return;
   }
 
-  log.info(`Auto-generating ${enabledPlugins.length} plugin(s): ${enabledPlugins.map((p) => p.id).join(', ')}`);
+  log.info(
+    `Auto-generating ${enabledPlugins.length} plugin(s): ${enabledPlugins.map((p) => p.id).join(', ')}`,
+  );
 
   for (const plugin of enabledPlugins) {
     try {

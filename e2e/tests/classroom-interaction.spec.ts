@@ -88,16 +88,13 @@ async function mockClassroomContent(page: import('@playwright/test').Page) {
     },
   };
 
-  await page.route(
-    `**/api/course/${TEST_COURSE_ID}/classrooms/${TEST_CLASSROOM_ID}`,
-    (route) => {
-      route.fulfill({
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(classroomData),
-      });
-    },
-  );
+  await page.route(`**/api/course/${TEST_COURSE_ID}/classrooms/${TEST_CLASSROOM_ID}`, (route) => {
+    route.fulfill({
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(classroomData),
+    });
+  });
 }
 
 test.describe('Classroom Interaction', () => {

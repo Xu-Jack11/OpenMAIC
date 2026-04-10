@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect, Fragment } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Image as ImageIcon,
@@ -9,10 +9,7 @@ import {
   Mic,
   SlidersHorizontal,
   ChevronRight,
-  Play,
-  Loader2,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
@@ -24,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
@@ -32,10 +28,9 @@ import { useSettingsStore } from '@/lib/store/settings';
 import { useTTSPreview } from '@/lib/audio/use-tts-preview';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
-import { TTS_PROVIDERS, getTTSVoices } from '@/lib/audio/constants';
 import { ASR_PROVIDERS, getASRSupportedLanguages } from '@/lib/audio/constants';
 import type { ImageProviderId, VideoProviderId } from '@/lib/media/types';
-import type { TTSProviderId, ASRProviderId } from '@/lib/audio/types';
+import type { ASRProviderId } from '@/lib/audio/types';
 import type { SettingsSection } from '@/lib/types/settings';
 
 interface MediaPopoverProps {
@@ -59,21 +54,6 @@ const VIDEO_PROVIDER_ICONS: Record<string, string> = {
 
 type TabId = 'image' | 'video' | 'tts' | 'asr';
 
-const LANG_LABELS: Record<string, string> = {
-  zh: '中文',
-  en: 'English',
-  ja: '日本語',
-  ko: '한국어',
-  fr: 'Français',
-  de: 'Deutsch',
-  es: 'Español',
-  pt: 'Português',
-  ru: 'Русский',
-  it: 'Italiano',
-  ar: 'العربية',
-  hi: 'हिन्दी',
-};
-
 const TABS: Array<{ id: TabId; icon: LucideIcon; label: string }> = [
   { id: 'image', icon: ImageIcon, label: 'Image' },
   { id: 'video', icon: Video, label: 'Video' },
@@ -81,35 +61,11 @@ const TABS: Array<{ id: TabId; icon: LucideIcon; label: string }> = [
   { id: 'asr', icon: Mic, label: 'ASR' },
 ];
 
-/** Localized TTS provider name (mirrors audio-settings.tsx) */
-function getTTSProviderName(providerId: TTSProviderId, t: (key: string) => string): string {
-  const names: Record<TTSProviderId, string> = {
-    'openai-tts': t('settings.providerOpenAITTS'),
-    'azure-tts': t('settings.providerAzureTTS'),
-    'glm-tts': t('settings.providerGLMTTS'),
-    'qwen-tts': t('settings.providerQwenTTS'),
-    'doubao-tts': t('settings.providerDoubaoTTS'),
-    'elevenlabs-tts': t('settings.providerElevenLabsTTS'),
-    'minimax-tts': t('settings.providerMiniMaxTTS'),
-    'browser-native-tts': t('settings.providerBrowserNativeTTS'),
-  };
-  return names[providerId] || providerId;
-}
-
-/** Extract the English name from voice name format "ChineseName (English)" */
-function getVoiceDisplayName(name: string, lang: string): string {
-  if (lang === 'en-US') {
-    const match = name.match(/\(([^)]+)\)/);
-    return match ? match[1] : name;
-  }
-  return name;
-}
-
 export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('image');
-  const { previewing, startPreview, stopPreview } = useTTSPreview();
+  const { stopPreview } = useTTSPreview();
 
   // ─── Store ───
   const imageGenerationEnabled = useSettingsStore((s) => s.imageGenerationEnabled);
@@ -132,14 +88,6 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const videoProvidersConfig = useSettingsStore((s) => s.videoProvidersConfig);
   const setVideoProvider = useSettingsStore((s) => s.setVideoProvider);
   const setVideoModelId = useSettingsStore((s) => s.setVideoModelId);
-
-  const ttsProviderId = useSettingsStore((s) => s.ttsProviderId);
-  const ttsVoice = useSettingsStore((s) => s.ttsVoice);
-  const ttsSpeed = useSettingsStore((s) => s.ttsSpeed);
-  const ttsProvidersConfig = useSettingsStore((s) => s.ttsProvidersConfig);
-  const setTTSProvider = useSettingsStore((s) => s.setTTSProvider);
-  const setTTSVoice = useSettingsStore((s) => s.setTTSVoice);
-  const setTTSSpeed = useSettingsStore((s) => s.setTTSSpeed);
 
   const asrProviderId = useSettingsStore((s) => s.asrProviderId);
   const asrLanguage = useSettingsStore((s) => s.asrLanguage);
@@ -166,18 +114,6 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
     id: string,
     needsKey: boolean,
   ) => !needsKey || !!configs[id]?.apiKey || !!configs[id]?.isServerConfigured;
-
-  const ttsSpeedRange = TTS_PROVIDERS[ttsProviderId]?.speedRange;
-
-  // ─── Dynamic browser voices ───
-  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    const load = () => setBrowserVoices(window.speechSynthesis.getVoices());
-    load();
-    window.speechSynthesis.addEventListener('voiceschanged', load);
-    return () => window.speechSynthesis.removeEventListener('voiceschanged', load);
-  }, []);
 
   // ─── Grouped select data (only available providers) ───
   const imageGroups = useMemo(
@@ -214,84 +150,8 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
     [videoProvidersConfig],
   );
 
-  // TTS: grouped by provider, voices as items (matching Image/Video pattern)
-  // Browser-native voices are split into sub-groups by language.
-  const ttsGroups = useMemo(() => {
-    const groups: SelectGroupData[] = [];
-
-    for (const p of Object.values(TTS_PROVIDERS)) {
-      if (p.requiresApiKey && !cfgOk(ttsProvidersConfig, p.id, p.requiresApiKey)) continue;
-
-      const providerName = getTTSProviderName(p.id, t);
-
-      // For browser-native-tts, split voices by language
-      if (p.id === 'browser-native-tts' && browserVoices.length > 0) {
-        const byLang = new Map<string, SpeechSynthesisVoice[]>();
-        for (const v of browserVoices) {
-          const langKey = v.lang.split('-')[0]; // "zh-CN" → "zh"
-          if (!byLang.has(langKey)) byLang.set(langKey, []);
-          byLang.get(langKey)!.push(v);
-        }
-        for (const [langKey, voices] of byLang) {
-          const langLabel = LANG_LABELS[langKey] || langKey;
-          groups.push({
-            groupId: p.id,
-            groupName: `${providerName} · ${langLabel}`,
-            groupIcon: p.icon,
-            available: true,
-            items: voices.map((v) => ({ id: v.voiceURI, name: v.name })),
-          });
-        }
-        continue;
-      }
-
-      groups.push({
-        groupId: p.id,
-        groupName: providerName,
-        groupIcon: p.icon,
-        available: true,
-        items: getTTSVoices(p.id).map((v) => ({
-          id: v.id,
-          name: getVoiceDisplayName(v.name, locale),
-        })),
-      });
-    }
-
-    return groups;
-  }, [ttsProvidersConfig, locale, browserVoices, t]);
-
-  // TTS preview
-  const handlePreview = useCallback(async () => {
-    if (previewing) {
-      stopPreview();
-      return;
-    }
-    try {
-      const providerConfig = ttsProvidersConfig[ttsProviderId];
-      await startPreview({
-        text: t('settings.ttsTestTextDefault'),
-        providerId: ttsProviderId,
-        modelId: providerConfig?.modelId,
-        voice: ttsVoice,
-        speed: ttsSpeed,
-        apiKey: providerConfig?.apiKey,
-        baseUrl: providerConfig?.baseUrl,
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message ? error.message : t('settings.ttsTestFailed');
-      toast.error(message);
-    }
-  }, [
-    previewing,
-    startPreview,
-    stopPreview,
-    t,
-    ttsProviderId,
-    ttsProvidersConfig,
-    ttsSpeed,
-    ttsVoice,
-  ]);
+  // TTS voice/speed/provider selection lives in the advanced settings panel;
+  // the TTS tab in this popover only exposes the enable toggle.
 
   // ASR: only available providers
   const asrGroups = useMemo(

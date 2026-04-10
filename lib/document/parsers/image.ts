@@ -6,12 +6,12 @@ const log = createLogger('ImageParser');
 
 export async function parseImageDocument(
   fileBuffer: Buffer,
-  mimeType: string
+  mimeType: string,
 ): Promise<ParsedDocumentContent> {
   try {
     const metadata = await sharp(fileBuffer).metadata();
     const base64 = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
-    
+
     const id = 'img_1';
     const images = [base64];
     const imageMapping = { [id]: base64 };

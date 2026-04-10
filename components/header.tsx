@@ -1,13 +1,6 @@
 'use client';
 
-import {
-  Settings,
-  Sun,
-  Moon,
-  Monitor,
-  ArrowLeft,
-  FolderOpen,
-} from 'lucide-react';
+import { Settings, Sun, Moon, Monitor, ArrowLeft, FolderOpen } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useTheme } from '@/lib/hooks/use-theme';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -54,8 +47,6 @@ export function Header({ currentSceneTitle, onOpenFiles }: HeaderProps) {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [languageOpen, themeOpen, handleClickOutside]);
-
-
 
   return (
     <>

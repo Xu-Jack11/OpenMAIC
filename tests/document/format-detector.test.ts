@@ -8,7 +8,9 @@ describe('format-detector', () => {
   });
 
   it('detects DOCX by mime type', () => {
-    const file = new File([''], 'test.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const file = new File([''], 'test.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
     expect(detectFormat(file)).toBe('docx');
   });
 
@@ -23,7 +25,9 @@ describe('format-detector', () => {
   });
 
   it('returns null for unknown format', () => {
-    const file = new File([''], 'test.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const file = new File([''], 'test.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
     expect(detectFormat(file)).toBeNull();
   });
 });

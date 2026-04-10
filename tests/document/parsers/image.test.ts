@@ -6,10 +6,10 @@ describe('Image Parser', () => {
     // 1x1 transparent PNG buffer
     const pngBuffer = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
-      'base64'
+      'base64',
     );
     const result = await parseImageDocument(pngBuffer, 'image/png');
-    
+
     expect(result.text).toBe('');
     expect(result.images.length).toBe(1);
     expect(result.images[0]).toContain('data:image/png;base64');

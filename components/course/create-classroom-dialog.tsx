@@ -63,7 +63,11 @@ function GreetingPill() {
   );
 }
 
-export function CreateClassroomDialog({ courseId, open, onOpenChange }: CreateClassroomDialogProps) {
+export function CreateClassroomDialog({
+  courseId,
+  open,
+  onOpenChange,
+}: CreateClassroomDialogProps) {
   const { t } = useI18n();
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -89,9 +93,7 @@ export function CreateClassroomDialog({ courseId, open, onOpenChange }: CreateCl
       setForm((prev) => ({
         ...prev,
         language:
-          savedLanguage === 'zh-CN' || savedLanguage === 'en-US'
-            ? savedLanguage
-            : prev.language,
+          savedLanguage === 'zh-CN' || savedLanguage === 'en-US' ? savedLanguage : prev.language,
         webSearch: savedWebSearch === 'true' ? true : prev.webSearch,
       }));
     } catch {

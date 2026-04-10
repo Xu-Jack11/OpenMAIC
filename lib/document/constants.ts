@@ -4,12 +4,15 @@ import { DocumentFormatId } from './types';
 export const MAX_FILE_SIZE_MB = 50;
 export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-export const DOCUMENT_FORMATS: Record<DocumentFormatId, {
-  id: DocumentFormatId;
-  name: string;
-  extensions: string[];
-  mimeTypes: string[];
-}> = {
+export const DOCUMENT_FORMATS: Record<
+  DocumentFormatId,
+  {
+    id: DocumentFormatId;
+    name: string;
+    extensions: string[];
+    mimeTypes: string[];
+  }
+> = {
   pdf: {
     id: 'pdf',
     name: 'PDF Document',
@@ -45,5 +48,5 @@ export const DOCUMENT_FORMATS: Record<DocumentFormatId, {
     name: 'Image',
     extensions: ['.png', '.jpg', '.jpeg', '.webp'],
     mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
-  }
+  },
 };

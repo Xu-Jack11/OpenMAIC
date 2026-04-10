@@ -277,9 +277,7 @@ export function FilesSidebar() {
         {/* Empty state */}
         {plugins.length === 0 && (
           <div className="text-center p-6 opacity-50">
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              {t('files.supplements')}
-            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">{t('files.supplements')}</p>
           </div>
         )}
       </div>

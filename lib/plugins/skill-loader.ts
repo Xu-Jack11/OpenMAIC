@@ -32,17 +32,11 @@ import { convertHandoutToDocument } from '@/lib/export/document/converters/hando
 import { convertExperimentToDocument } from '@/lib/export/document/converters/experiment-converter';
 import { convertReadingToDocument } from '@/lib/export/document/converters/reading-converter';
 
-const CONVERTER_MAP: Record<
-  string,
-  (data: unknown, locale: Locale) => ExportableDocument
-> = {
+const CONVERTER_MAP: Record<string, (data: unknown, locale: Locale) => ExportableDocument> = {
   'handout-converter': (data, locale) =>
     convertHandoutToDocument(data as Parameters<typeof convertHandoutToDocument>[0], locale),
   'experiment-converter': (data, locale) =>
-    convertExperimentToDocument(
-      data as Parameters<typeof convertExperimentToDocument>[0],
-      locale,
-    ),
+    convertExperimentToDocument(data as Parameters<typeof convertExperimentToDocument>[0], locale),
   'reading-converter': (data, locale) =>
     convertReadingToDocument(data as Parameters<typeof convertReadingToDocument>[0], locale),
 };
@@ -79,8 +73,7 @@ function buildPlugin(manifest: SkillManifest): GenerationPlugin {
   const icon = resolveIcon(manifest.icon);
   const PreviewComponent =
     (manifest.preview?.component && PREVIEW_MAP[manifest.preview.component]) || GenericPreview;
-  const converter =
-    manifest.export?.converter && CONVERTER_MAP[manifest.export.converter];
+  const converter = manifest.export?.converter && CONVERTER_MAP[manifest.export.converter];
 
   return {
     id: manifest.id,
@@ -129,15 +122,15 @@ export async function loadSkills(): Promise<GenerationPlugin[]> {
     if (!res.ok) {
       throw new Error('Failed to fetch skills');
     }
-    
-    const data = await res.json() as { skills: SkillManifest[] };
+
+    const data = (await res.json()) as { skills: SkillManifest[] };
     const manifests = data.skills || [];
-    
+
     const loadedPlugins = manifests.map(buildPlugin);
-    
+
     // Also update the synchronous registry for non-React contexts
     loadedPlugins.forEach(registerPlugin);
-    
+
     return loadedPlugins;
   } catch (error) {
     console.error('Error loading skills via API:', error);

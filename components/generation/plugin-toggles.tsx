@@ -53,9 +53,7 @@ export function PluginToggles() {
           <button className={enabledCount > 0 ? pillActive : pillMuted}>
             <Puzzle className="size-3.5" />
             {enabledCount > 0 && (
-              <span>
-                {t('toolbar.pluginsEnabled').replace('{n}', String(enabledCount))}
-              </span>
+              <span>{t('toolbar.pluginsEnabled').replace('{n}', String(enabledCount))}</span>
             )}
           </button>
         </PopoverTrigger>
@@ -64,9 +62,7 @@ export function PluginToggles() {
           <div className="px-3 pt-3 pb-2 border-b border-border/40">
             <div className="flex items-center gap-2">
               <Puzzle className="size-4 text-violet-500" />
-              <span className="text-xs font-semibold text-foreground">
-                {t('toolbar.plugins')}
-              </span>
+              <span className="text-xs font-semibold text-foreground">{t('toolbar.plugins')}</span>
             </div>
             <p className="text-[10px] text-muted-foreground/60 mt-1 leading-relaxed">
               {t('toolbar.pluginsDesc')}

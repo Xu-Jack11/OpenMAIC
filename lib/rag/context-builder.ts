@@ -73,7 +73,8 @@ export function formatChunksAsContext(
   }
 
   // Build final context text with header
-  const header = '## 课程文档参考资料\n\n以下是与当前主题相关的课程文档摘录，请在生成内容时参考这些资料：\n';
+  const header =
+    '## 课程文档参考资料\n\n以下是与当前主题相关的课程文档摘录，请在生成内容时参考这些资料：\n';
   const text = header + contextParts.join('\n\n---\n\n');
 
   // Build sources array

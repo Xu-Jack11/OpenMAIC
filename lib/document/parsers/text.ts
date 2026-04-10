@@ -1,8 +1,6 @@
 import type { ParsedDocumentContent } from '../types';
 
-export async function parseTextDocument(
-  fileBuffer: Buffer
-): Promise<ParsedDocumentContent> {
+export async function parseTextDocument(fileBuffer: Buffer): Promise<ParsedDocumentContent> {
   return {
     text: fileBuffer.toString('utf-8'),
     images: [],

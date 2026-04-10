@@ -450,6 +450,10 @@ export function Roundtable({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // cancelRecording/handleToggleInput/handleToggleVoice are intentionally
+    // excluded: they are recreated every render and including them would
+    // re-attach the keydown listener on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isInLiveFlow,
     isDiscussionPaused,

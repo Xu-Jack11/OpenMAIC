@@ -4,7 +4,7 @@ import type { ParsedDocumentContent, DocumentParserConfig } from '../types';
 
 export async function parsePdfDocument(
   config: DocumentParserConfig,
-  fileBuffer: Buffer
+  fileBuffer: Buffer,
 ): Promise<ParsedDocumentContent> {
   // If no providerId is specified, fallback to unpdf
   const pdfConfig = {

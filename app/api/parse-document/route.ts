@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file');
     const formatValue = formData.get('format');
-    
+
     // PDF specific fields
     const providerId = formData.get('providerId') as string | null;
     const apiKey = formData.get('apiKey') as string | null;
@@ -58,12 +58,16 @@ export async function POST(req: NextRequest) {
 
     // Resolve API key and Base URL only if providerId is set (PDF specific for now)
     const effectiveProviderId = providerId || undefined;
-    const resolvedApiKey = effectiveProviderId 
-      ? (clientBaseUrl ? apiKey || '' : resolvePDFApiKey(effectiveProviderId as PDFProviderId, apiKey || undefined))
+    const resolvedApiKey = effectiveProviderId
+      ? clientBaseUrl
+        ? apiKey || ''
+        : resolvePDFApiKey(effectiveProviderId as PDFProviderId, apiKey || undefined)
       : apiKey || undefined;
-      
+
     const resolvedBaseUrl = effectiveProviderId
-      ? (clientBaseUrl ? clientBaseUrl : resolvePDFBaseUrl(effectiveProviderId as PDFProviderId, baseUrl || undefined))
+      ? clientBaseUrl
+        ? clientBaseUrl
+        : resolvePDFBaseUrl(effectiveProviderId as PDFProviderId, baseUrl || undefined)
       : clientBaseUrl;
 
     const config = {

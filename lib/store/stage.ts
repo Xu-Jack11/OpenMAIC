@@ -291,14 +291,11 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
         return;
       }
       try {
-        const res = await fetch(
-          `/api/course/${courseId}/classrooms/${classroomId}/content`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stage, scenes }),
-          },
-        );
+        const res = await fetch(`/api/course/${courseId}/classrooms/${classroomId}/content`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stage, scenes }),
+        });
         if (!res.ok) {
           log.error('Server save failed:', res.status);
         }

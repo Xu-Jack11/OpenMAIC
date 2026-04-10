@@ -8,8 +8,7 @@ import { db } from '@/lib/utils/database';
 import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generation';
 import type { AgentInfo } from '@/lib/generation/generation-pipeline';
 import type { Scene } from '@/lib/types/stage';
-import type { Action, SpeechAction } from '@/lib/types/action';
-import type { TTSProviderId } from '@/lib/audio/types';
+import type { SpeechAction } from '@/lib/types/action';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { autoGeneratePlugins } from '@/lib/plugins/plugin-auto-generator';
@@ -410,7 +409,9 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           // Auto-generate enabled plugins (fire-and-forget)
           const { scenes: allScenes, stage: currentStage } = store.getState();
           if (currentStage) {
-            const locale = (currentStage.language === 'en-US' ? 'en-US' : 'zh-CN') as 'zh-CN' | 'en-US';
+            const locale = (currentStage.language === 'en-US' ? 'en-US' : 'zh-CN') as
+              | 'zh-CN'
+              | 'en-US';
             autoGeneratePlugins(currentStage.id, allScenes, currentStage, locale).catch((err) => {
               log.warn('Plugin auto-generation error:', err);
             });

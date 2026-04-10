@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useRef, useMemo } from 'react';
-import { Bot, Check, ChevronLeft, Globe, Paperclip, FileText, X, Globe2, Image as ImageIcon } from 'lucide-react';
+import {
+  Bot,
+  Check,
+  ChevronLeft,
+  Globe,
+  Paperclip,
+  FileText,
+  X,
+  Globe2,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
@@ -183,7 +193,10 @@ export function GenerationToolbar({
               <span className="text-xs font-medium text-muted-foreground shrink-0">
                 {t('toolbar.pdfParser')}
               </span>
-              <Select value={pdfProviderId} onValueChange={(v) => setPDFProvider(v as PDFProviderId)}>
+              <Select
+                value={pdfProviderId}
+                onValueChange={(v) => setPDFProvider(v as PDFProviderId)}
+              >
                 <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
                   <SelectValue />
                 </SelectTrigger>
@@ -194,7 +207,9 @@ export function GenerationToolbar({
                       !provider.requiresApiKey || !!cfg?.apiKey || !!cfg?.isServerConfigured;
                     return (
                       <SelectItem key={provider.id} value={provider.id} disabled={!available}>
-                        <div className={cn('flex items-center gap-1.5', !available && 'opacity-50')}>
+                        <div
+                          className={cn('flex items-center gap-1.5', !available && 'opacity-50')}
+                        >
                           {provider.icon && (
                             <img src={provider.icon} alt={provider.name} className="w-3.5 h-3.5" />
                           )}

@@ -61,10 +61,13 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
   const [systemPrompt, setSystemPrompt] = useState(editSkill?.systemPrompt ?? '');
   const [userPrompt, setUserPrompt] = useState(editSkill?.userPrompt ?? '');
   const [variables, setVariables] = useState<UserSkillVariable[]>(
-    editSkill?.variables ?? USER_SKILL_VARIABLE_OPTIONS.map((v) => ({ templateVar: v.templateVar, source: v.source })),
+    editSkill?.variables ??
+      USER_SKILL_VARIABLE_OPTIONS.map((v) => ({ templateVar: v.templateVar, source: v.source })),
   );
   const [responseKey, setResponseKey] = useState(editSkill?.responseKey ?? '');
-  const [supportedFormats] = useState<ExportFormat[]>(editSkill?.supportedFormats ?? DEFAULT_FORMATS);
+  const [supportedFormats] = useState<ExportFormat[]>(
+    editSkill?.supportedFormats ?? DEFAULT_FORMATS,
+  );
   const [guidance, setGuidance] = useState(editSkill?.guidance ?? '');
 
   // UI state
@@ -77,7 +80,9 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
   const [aiGenerating, setAiGenerating] = useState(false);
 
   // Template mode state
-  const [templateStep, setTemplateStep] = useState<'idle' | 'parsing' | 'analyzing' | 'done'>('idle');
+  const [templateStep, setTemplateStep] = useState<'idle' | 'parsing' | 'analyzing' | 'done'>(
+    'idle',
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const userPromptRef = useRef<HTMLTextAreaElement>(null);
@@ -92,24 +97,27 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
   }, []);
 
   // Insert variable tag into user prompt at cursor
-  const insertVariable = useCallback((templateVar: string) => {
-    const tag = `{{${templateVar}}}`;
-    const textarea = userPromptRef.current;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const newVal = userPrompt.slice(0, start) + tag + userPrompt.slice(end);
-      setUserPrompt(newVal);
-      // Restore cursor after tag
-      requestAnimationFrame(() => {
-        textarea.focus();
-        const pos = start + tag.length;
-        textarea.setSelectionRange(pos, pos);
-      });
-    } else {
-      setUserPrompt((prev) => prev + tag);
-    }
-  }, [userPrompt]);
+  const insertVariable = useCallback(
+    (templateVar: string) => {
+      const tag = `{{${templateVar}}}`;
+      const textarea = userPromptRef.current;
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const newVal = userPrompt.slice(0, start) + tag + userPrompt.slice(end);
+        setUserPrompt(newVal);
+        // Restore cursor after tag
+        requestAnimationFrame(() => {
+          textarea.focus();
+          const pos = start + tag.length;
+          textarea.setSelectionRange(pos, pos);
+        });
+      } else {
+        setUserPrompt((prev) => prev + tag);
+      }
+    },
+    [userPrompt],
+  );
 
   // Apply AI-generated definition to form
   const applyDefinition = useCallback((def: Record<string, unknown>) => {
@@ -121,10 +129,18 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
     if (typeof def.responseKey === 'string') setResponseKey(def.responseKey);
     if (typeof def.guidance === 'string') setGuidance(def.guidance);
     if (Array.isArray(def.variables)) {
-      const validSources = new Set(['stage.name', 'stage.description', 'stage.language', 'sceneSummary']);
+      const validSources = new Set([
+        'stage.name',
+        'stage.description',
+        'stage.language',
+        'sceneSummary',
+      ]);
       const vars = (def.variables as { templateVar?: string; source?: string }[])
         .filter((v) => v.templateVar && v.source && validSources.has(v.source))
-        .map((v) => ({ templateVar: v.templateVar!, source: v.source! as UserSkillVariable['source'] }));
+        .map((v) => ({
+          templateVar: v.templateVar!,
+          source: v.source! as UserSkillVariable['source'],
+        }));
       if (vars.length > 0) setVariables(vars);
     }
     setMode('manual');
@@ -147,7 +163,11 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
       const data = await res.json();
       if (!data.definition) throw new Error(data.error || 'Generation failed');
       applyDefinition(data.definition as Record<string, unknown>);
-      toast.success(locale === 'zh-CN' ? '技能定义已生成，请检查并调整' : 'Skill definition generated. Please review and adjust.');
+      toast.success(
+        locale === 'zh-CN'
+          ? '技能定义已生成，请检查并调整'
+          : 'Skill definition generated. Please review and adjust.',
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Generation failed');
     } finally {
@@ -156,41 +176,49 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
   }, [aiDescription, locale, applyDefinition]);
 
   // Template upload
-  const handleTemplateUpload = useCallback(async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      toast.error('Only PDF files are supported');
-      return;
-    }
-    setTemplateStep('parsing');
-    try {
-      // Step 1: Parse PDF
-      const formData = new FormData();
-      formData.append('pdf', file);
-      const parseRes = await fetch('/api/parse-pdf', { method: 'POST', body: formData });
-      const parseData = await parseRes.json();
-      if (!parseData.text) throw new Error(parseData.error || 'PDF parsing failed');
+  const handleTemplateUpload = useCallback(
+    async (file: File) => {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        toast.error('Only PDF files are supported');
+        return;
+      }
+      setTemplateStep('parsing');
+      try {
+        // Step 1: Parse PDF
+        const formData = new FormData();
+        formData.append('pdf', file);
+        const parseRes = await fetch('/api/parse-pdf', { method: 'POST', body: formData });
+        const parseData = await parseRes.json();
+        if (!parseData.text) throw new Error(parseData.error || 'PDF parsing failed');
 
-      // Step 2: Analyze template
-      setTemplateStep('analyzing');
-      const analyzeRes = await fetch('/api/generate/skill-definition', {
-        method: 'POST',
-        headers: getModelHeaders(),
-        body: JSON.stringify({
-          mode: 'template',
-          templateText: parseData.text.slice(0, 30000), // Limit text length
-          language: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
-        }),
-      });
-      const analyzeData = await analyzeRes.json();
-      if (!analyzeData.definition) throw new Error(analyzeData.error || 'Template analysis failed');
-      applyDefinition(analyzeData.definition as Record<string, unknown>);
-      setTemplateStep('done');
-      toast.success(locale === 'zh-CN' ? '模板分析完成，请检查并调整' : 'Template analyzed. Please review and adjust.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Template analysis failed');
-      setTemplateStep('idle');
-    }
-  }, [locale, applyDefinition]);
+        // Step 2: Analyze template
+        setTemplateStep('analyzing');
+        const analyzeRes = await fetch('/api/generate/skill-definition', {
+          method: 'POST',
+          headers: getModelHeaders(),
+          body: JSON.stringify({
+            mode: 'template',
+            templateText: parseData.text.slice(0, 30000), // Limit text length
+            language: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
+          }),
+        });
+        const analyzeData = await analyzeRes.json();
+        if (!analyzeData.definition)
+          throw new Error(analyzeData.error || 'Template analysis failed');
+        applyDefinition(analyzeData.definition as Record<string, unknown>);
+        setTemplateStep('done');
+        toast.success(
+          locale === 'zh-CN'
+            ? '模板分析完成，请检查并调整'
+            : 'Template analyzed. Please review and adjust.',
+        );
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Template analysis failed');
+        setTemplateStep('idle');
+      }
+    },
+    [locale, applyDefinition],
+  );
 
   // Save
   const handleSave = useCallback(async () => {
@@ -222,7 +250,23 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
     } finally {
       setSaving(false);
     }
-  }, [name, description, icon, systemPrompt, userPrompt, variables, responseKey, supportedFormats, guidance, isEdit, editSkill, addSkill, updateSkill, onClose, locale]);
+  }, [
+    name,
+    description,
+    icon,
+    systemPrompt,
+    userPrompt,
+    variables,
+    responseKey,
+    supportedFormats,
+    guidance,
+    isEdit,
+    editSkill,
+    addSkill,
+    updateSkill,
+    onClose,
+    locale,
+  ]);
 
   // Delete
   const handleDelete = useCallback(async () => {
@@ -246,11 +290,13 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
         {/* Mode tabs (only for new skills) */}
         {!isEdit && (
           <div className="px-6 pb-3 flex gap-1.5">
-            {([
-              { key: 'manual' as const, label: t('customSkill.modeManual'), icon: PenLine },
-              { key: 'ai' as const, label: t('customSkill.modeAI'), icon: Wand2 },
-              { key: 'template' as const, label: t('customSkill.modeTemplate'), icon: FileUp },
-            ] as const).map(({ key, label, icon: ModeIcon }) => (
+            {(
+              [
+                { key: 'manual' as const, label: t('customSkill.modeManual'), icon: PenLine },
+                { key: 'ai' as const, label: t('customSkill.modeAI'), icon: Wand2 },
+                { key: 'template' as const, label: t('customSkill.modeTemplate'), icon: FileUp },
+              ] as const
+            ).map(({ key, label, icon: ModeIcon }) => (
               <button
                 key={key}
                 onClick={() => setMode(key)}
@@ -473,7 +519,11 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                {showAdvanced ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                {showAdvanced ? (
+                  <ChevronUp className="size-3" />
+                ) : (
+                  <ChevronDown className="size-3" />
+                )}
                 {t('customSkill.advanced')}
               </button>
 
@@ -511,8 +561,8 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
         {/* Footer */}
         <DialogFooter className="px-6 py-3 border-t border-border/40 flex items-center sm:justify-between">
           <div>
-            {isEdit && (
-              deleteConfirm ? (
+            {isEdit &&
+              (deleteConfirm ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-red-500">{t('customSkill.deleteConfirm')}</span>
                   <Button variant="destructive" size="sm" onClick={handleDelete}>
@@ -532,8 +582,7 @@ export function CustomSkillEditor({ open, onClose, editSkill }: CustomSkillEdito
                   <Trash2 className="size-3.5 mr-1" />
                   {t('customSkill.delete')}
                 </Button>
-              )
-            )}
+              ))}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onClose}>

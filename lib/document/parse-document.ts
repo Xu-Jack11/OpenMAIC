@@ -17,10 +17,10 @@ function inferImageMimeType(fileName: string): string {
 
 export async function parseDocument(
   config: DocumentParserConfig,
-  file: File
+  file: File,
 ): Promise<ParsedDocumentContent> {
   const format = config.format || detectFormat(file);
-  
+
   if (!format) {
     throw new Error(`Unsupported document format for file: ${file.name}`);
   }

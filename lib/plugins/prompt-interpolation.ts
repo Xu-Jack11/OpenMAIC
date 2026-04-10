@@ -9,10 +9,7 @@
  * Replace {{variable}} placeholders in a template string.
  * Unmatched placeholders are left as-is.
  */
-export function interpolatePrompt(
-  template: string,
-  variables: Record<string, string>,
-): string {
+export function interpolatePrompt(template: string, variables: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
     return variables[key] ?? match;
   });

@@ -63,9 +63,8 @@ describe('course write auth', () => {
     authState.authenticated = true;
     authState.role = 'STUDENT';
 
-    const { PATCH } = await import(
-      '@/app/api/course/[courseId]/classrooms/[classroomId]/content/route'
-    );
+    const { PATCH } =
+      await import('@/app/api/course/[courseId]/classrooms/[classroomId]/content/route');
 
     const req = new Request('http://localhost/api/course/course-1/classrooms/classroom-1/content', {
       method: 'PATCH',
@@ -106,7 +105,9 @@ describe('course write auth', () => {
           createdAt: Date.now(),
           updatedAt: Date.now(),
         },
-        scenes: [{ id: 'scene-1', stageId: 'stage-1', type: 'slide', title: 'S1', order: 0, content: {} }],
+        scenes: [
+          { id: 'scene-1', stageId: 'stage-1', type: 'slide', title: 'S1', order: 0, content: {} },
+        ],
       }),
     });
 

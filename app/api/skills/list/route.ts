@@ -16,7 +16,8 @@ export async function GET() {
       return NextResponse.json({ skills: [] });
     }
 
-    const skillDirs = fs.readdirSync(SKILLS_DIR, { withFileTypes: true })
+    const skillDirs = fs
+      .readdirSync(SKILLS_DIR, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name);
 

@@ -52,10 +52,7 @@ function renderObject(obj: Record<string, unknown>, depth: number): React.ReactN
                   <span className="whitespace-pre-wrap">{item}</span>
                 </div>
               ) : typeof item === 'object' && item !== null ? (
-                <div
-                  key={i}
-                  className="border-l-2 border-gray-200 dark:border-gray-700 pl-3 py-1"
-                >
+                <div key={i} className="border-l-2 border-gray-200 dark:border-gray-700 pl-3 py-1">
                   {renderObject(item as Record<string, unknown>, depth + 1)}
                 </div>
               ) : (
