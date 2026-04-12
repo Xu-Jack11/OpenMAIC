@@ -41,6 +41,11 @@ pnpm exec playwright install chromium --with-deps  # Install browsers first
 # Docker
 cp .env.example .env.local  # configure API keys
 docker compose up --build
+
+# Prisma (server-side database)
+npx prisma migrate dev --name <name>  # Run migration
+npx prisma generate                  # Regenerate Prisma client
+npx prisma studio                    # DB browser
 ```
 
 ## Architecture
@@ -49,11 +54,14 @@ docker compose up --build
 
 The system is built around four engines that form the main processing pipeline:
 
-1. **Generation Pipeline** (`lib/generation/`) -- Two-stage lesson creation:
-   - Stage 1 (`outline-generator.ts`): User requirements -> structured scene outlines via LLM
-   - Stage 2 (`scene-generator.ts`): Each outline -> full scene content (slides, quiz, interactive HTML, PBL)
-   - `pipeline-runner.ts` orchestrates both stages with progress callbacks
+1. **Generation Pipeline** (`lib/generation/` + `lib/server/classroom-generation.ts`):
+   - **Production entry point**: `POST /api/course/[courseId]/classrooms` -> `generateClassroom()` in `lib/server/classroom-generation.ts` (authenticated, course-scoped)
+   - Stage 0 (`requirement-analyzer.ts`): Enriches raw user requirement via LLM -- extracts topic, audience, depth, and a focused RAG query
+   - Stage 1 (`outline-generator.ts`): Enriched requirement -> structured scene outlines via LLM
+   - Stage 2 (`scene-generator.ts`): Each outline -> full scene content (slides, quiz, interactive HTML, PBL) + actions
+   - `generation-pipeline.ts` is a barrel re-export for shared types and utilities (`AgentInfo`, `parseJsonResponse`, `formatTeacherPersonaForPrompt`, etc.)
    - Prompts live in `lib/generation/prompts/templates/` as markdown files with `{{variable}}` interpolation and `{{snippet:name}}` includes from `snippets/`
+   - Client-side streaming path: `app/api/generate/scene-outlines-stream/route.ts` + `app/api/generate/scene-content/route.ts` (used by `lib/hooks/use-scene-generator.ts`)
 
 2. **Multi-Agent Orchestration** (`lib/orchestration/`) -- LangGraph StateGraph:
    - `director-graph.ts`: `START -> director -> agent_generate -> director (loop) -> END`
@@ -75,11 +83,13 @@ The system is built around four engines that form the main processing pipeline:
 ### Data Flow
 
 ```
-User Input -> Generation Pipeline -> Scenes with Actions -> Stored in Zustand (StageStore)
-                                                                    |
-                                           Playback Engine consumes actions sequentially
-                                                                    |
-                                           Action Engine executes each action on the stage
+User Input -> Requirement Analysis -> RAG Context -> Outline Generation -> Scene Content + Actions
+                                                                                    |
+                                                     Stored in Zustand (StageStore) + Prisma (Classroom)
+                                                                                    |
+                                              Playback Engine consumes actions sequentially
+                                                                                    |
+                                              Action Engine executes each action on the stage
 ```
 
 For live discussion, the chat API (`/api/chat`) receives full client state, runs the LangGraph orchestration graph, and streams back SSE events that the client applies to the stage in real time.
@@ -96,7 +106,46 @@ Four scene types defined in `lib/types/stage.ts` as `SceneType`:
 
 - **Zustand stores** in `lib/store/`: `stage.ts` (scenes, current scene, mode), `canvas.ts` (editor state, whiteboard), `settings.ts` (provider config, TTS, ASR, persisted to localStorage), `keyboard.ts`, `media-generation.ts`
 - **Client-side persistence**: Dexie (IndexedDB) for classroom data, localStorage for settings
-- **No server-side database**: The server is stateless. Classroom JSON files are stored in `data/` directory on disk (server-generated classrooms only)
+- **Server-side persistence**: PostgreSQL via Prisma 7 for users, courses, classrooms, documents, RAG chunks
+  - Prisma config: no `url` in datasource block; `prisma.config.ts` sets `datasource.url` for migrations; `lib/server/db.ts` passes `datasourceUrl` to PrismaClient via `@prisma/adapter-pg`
+  - Generated client output: `lib/generated/prisma/`
+  - Migrations: `npx prisma migrate dev --name <name>`; `npx prisma generate` to regenerate client
+
+### Course & Auth System
+
+`lib/server/auth/` handles authentication and course membership:
+- **Auth flow**: Invitation codes (6-char) + session tokens (32-char, bearer token in Authorization header)
+- **Password auth**: `password.ts` (bcrypt hashing), `tokens.ts` (session token CRUD), `middleware.ts` (bearer token extraction/validation)
+- **RBAC**: TEACHER (edit courses) | STUDENT (read-only), enforced via `lib/server/permissions.ts`
+- **API format**: REST with `{ success: true, data }` or `{ success: false, errorCode, error, details }`
+
+### RAG System
+
+`lib/rag/` provides document indexing and retrieval-augmented generation:
+- `indexer.ts` -- Splits documents into chunks, generates embeddings, stores in `DocumentChunk` model with pgvector
+- `retriever.ts` -- Vector similarity search against stored chunks
+- `context-builder.ts` -- Assembles retrieved chunks into prompt context
+- `embeddings.ts` -- Embedding provider abstraction (OpenAI-compatible default with retry/timeout, local fallback). Default dimensions: 1024
+- `chunker.ts` -- Token-aware text splitting with overlap
+- Config via env vars: `EMBEDDING_PROVIDER`, `OPENAI_EMBEDDING_API_KEY`, `RAG_CHUNK_SIZE`, `RAG_TOP_K`, etc.
+- RAG is integrated into both classroom generation (`classroom-generation.ts`) and live chat (`/api/chat`) via the shared `buildDocumentContext()` facade in `lib/rag/index.ts`
+
+### Document Parsing
+
+`lib/document/` handles multi-format document parsing:
+- `parse-document.ts` -- Main entry, routes by MIME type
+- `format-detector.ts` -- File type detection
+- Parsers: `pdf.ts` (unpdf or MinerU), `docx.ts`, `pptx.ts`, `markdown.ts`, `text.ts`, `image.ts`
+- API: `POST /api/parse-document` (text extraction), `POST /api/parse-pdf` (PDF-specific with image extraction)
+
+### Plugin System
+
+`lib/plugins/` provides a declarative skill system for supplementary content generation:
+- Built-in plugins: `handout`, `experiment`, `extended-reading` (each has a YAML manifest + TSX preview)
+- `registry.ts` -- Plugin discovery and loading
+- `skill-loader.ts` / `user-skill-loader.ts` -- YAML manifest parsing
+- `plugin-auto-generator.ts` -- Auto-generates plugin content after scene creation
+- Teachers can create custom skills via `components/supplementary/custom-skill-editor.tsx`
 
 ### AI Provider System
 
@@ -108,16 +157,19 @@ Server-side provider config can come from environment variables or `server-provi
 
 All in `app/api/`. Key endpoints:
 - `/api/chat` -- Stateless multi-agent discussion (SSE streaming)
-- `/api/generate-classroom` -- Async classroom generation job (POST returns jobId, GET polls status)
-- `/api/generate/*` -- Individual generation steps (outlines, scene-content, scene-actions, image, tts, video)
-- `/api/parse-pdf` -- PDF parsing (unpdf or MinerU)
+- `/api/course/[courseId]/classrooms` -- Authenticated classroom generation (POST creates async job, GET lists classrooms)
+- `/api/generate-classroom/[jobId]` -- Poll generation job status
+- `/api/generate/*` -- Individual generation steps (outlines, scene-content, scene-actions, image, tts, video, handout, experiment, reading, skill, custom-skill, skill-definition)
+- `/api/parse-pdf`, `/api/parse-document` -- Document parsing (unpdf or MinerU)
 - `/api/pbl/chat` -- PBL-specific chat with MCP tools
 - `/api/web-search` -- Tavily or Grok web search
 - `/api/quiz-grade` -- AI quiz grading
+- `/api/course/auth/*` -- Auth endpoints (create-course, join, register, login, logout, me)
+- `/api/course/[courseId]/*` -- Course CRUD, members, documents, invitations
 
 ### Prompt System
 
-Generation prompts are markdown templates in `lib/generation/prompts/templates/{promptId}/system.md` and `user.md`. Shared fragments live in `snippets/`. The loader (`prompts/loader.ts`) reads from filesystem, caches in memory, and supports `{{snippet:name}}` inclusion and `{{variable}}` interpolation.
+Generation prompts are markdown templates in `lib/generation/prompts/templates/{promptId}/system.md` and `user.md`. Shared fragments live in `snippets/` (action-types, element-types, json-output-rules). The loader (`prompts/loader.ts`) reads from filesystem, caches in memory, and supports `{{snippet:name}}` inclusion and `{{variable}}` interpolation.
 
 ### Workspace Packages
 
@@ -139,5 +191,4 @@ Two internal packages in `packages/` (built during `pnpm install` via postinstal
 - **Logging**: Use `createLogger('ModuleName')` from `lib/logger.ts` -- not raw `console.log`
 - **Node version**: >= 20 (`.nvmrc` specifies 22)
 - **Package manager**: pnpm 10 (enforced via `packageManager` field)
-- **Refactor-only PRs** are not accepted unless explicitly requested by a maintainer
-- **AI-assisted PRs** must be marked and self-reviewed before requesting maintainer review
+- **PRs**: Every PR must link to an issue (`Closes #123`). Refactor-only PRs not accepted unless explicitly requested by a maintainer. AI-assisted PRs must be marked and self-reviewed before requesting maintainer review.
