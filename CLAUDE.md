@@ -41,11 +41,6 @@ pnpm exec playwright install chromium --with-deps  # Install browsers first
 # Docker
 cp .env.example .env.local  # configure API keys
 docker compose up --build
-
-# Prisma (server-side database)
-npx prisma migrate dev --name <name>  # Run migration
-npx prisma generate                  # Regenerate Prisma client
-npx prisma studio                    # DB browser
 ```
 
 ## Architecture
@@ -101,28 +96,7 @@ Four scene types defined in `lib/types/stage.ts` as `SceneType`:
 
 - **Zustand stores** in `lib/store/`: `stage.ts` (scenes, current scene, mode), `canvas.ts` (editor state, whiteboard), `settings.ts` (provider config, TTS, ASR, persisted to localStorage), `keyboard.ts`, `media-generation.ts`
 - **Client-side persistence**: Dexie (IndexedDB) for classroom data, localStorage for settings
-- **Server-side persistence**: PostgreSQL via Prisma 7 for users, courses, classrooms, documents, RAG chunks
-  - Prisma config: no `url` in datasource block; `prisma.config.ts` sets `datasource.url` for migrations; `lib/server/db.ts` passes `datasourceUrl` to PrismaClient via `@prisma/adapter-pg`
-  - Generated client output: `lib/generated/prisma/`
-  - Migrations: `npx prisma migrate dev --name <name>`; `npx prisma generate` to regenerate client
-
-### Course & Auth System
-
-`lib/server/auth/` handles authentication and course membership:
-- **Auth flow**: Invitation codes (6-char) + session tokens (32-char, bearer token in Authorization header)
-- **Password auth**: `password.ts` (bcrypt hashing), `tokens.ts` (session token CRUD), `middleware.ts` (bearer token extraction/validation)
-- **RBAC**: TEACHER (edit courses) | STUDENT (read-only), enforced via `lib/server/permissions.ts`
-- **API format**: REST with `{ success: true, data }` or `{ success: false, errorCode, error, details }`
-
-### RAG System
-
-`lib/rag/` provides document indexing and retrieval-augmented generation:
-- `indexer.ts` — Splits documents into chunks, generates embeddings, stores in `DocumentChunk` model with pgvector
-- `retriever.ts` — Vector similarity search against stored chunks
-- `context-builder.ts` — Assembles retrieved chunks into prompt context
-- `embeddings.ts` — Embedding provider abstraction (OpenAI default, local fallback)
-- `chunker.ts` — Token-aware text splitting with overlap
-- Config via env vars: `EMBEDDING_PROVIDER`, `OPENAI_EMBEDDING_API_KEY`, `RAG_CHUNK_SIZE`, `RAG_TOP_K`, etc.
+- **No server-side database**: The server is stateless. Classroom JSON files are stored in `data/` directory on disk (server-generated classrooms only)
 
 ### AI Provider System
 
@@ -135,13 +109,11 @@ Server-side provider config can come from environment variables or `server-provi
 All in `app/api/`. Key endpoints:
 - `/api/chat` -- Stateless multi-agent discussion (SSE streaming)
 - `/api/generate-classroom` -- Async classroom generation job (POST returns jobId, GET polls status)
-- `/api/generate/*` -- Individual generation steps (outlines, scene-content, scene-actions, image, tts, video, handout, experiment, reading, skill, custom-skill, skill-definition)
-- `/api/parse-pdf`, `/api/parse-document` -- Document parsing (unpdf or MinerU)
+- `/api/generate/*` -- Individual generation steps (outlines, scene-content, scene-actions, image, tts, video)
+- `/api/parse-pdf` -- PDF parsing (unpdf or MinerU)
 - `/api/pbl/chat` -- PBL-specific chat with MCP tools
 - `/api/web-search` -- Tavily or Grok web search
 - `/api/quiz-grade` -- AI quiz grading
-- `/api/course/auth/*` -- Auth endpoints (create-course, join, register, login, logout, me)
-- `/api/course/[courseId]/*` -- Course CRUD, members, classrooms, documents, invitations
 
 ### Prompt System
 
