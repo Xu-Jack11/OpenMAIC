@@ -1,12 +1,10 @@
 generator client {
-  provider        = "prisma-client"
-  output          = "../lib/generated/prisma"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
 }
 
 datasource db {
-  provider   = "postgresql"
-  extensions = [vector]
+  provider = "postgresql"
 }
 
 enum Role {
@@ -53,6 +51,9 @@ model Course {
   creator     User     @relation("CourseCreator", fields: [creatorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  /// RAGFlow dataset ID for this course (created on first document upload)
+  ragflowDatasetId String?
 
   members         CourseMember[]
   classrooms      Classroom[]
@@ -112,27 +113,12 @@ model Document {
   /// Indexing status: pending, indexing, indexed, failed
   indexStatus String   @default("pending")
   indexError  String?
-  createdAt   DateTime @default(now())
-
-  chunks DocumentChunk[]
+  /// RAGFlow document ID (set after upload to RAGFlow)
+  ragflowDocumentId String?
+  createdAt         DateTime @default(now())
 
   @@index([courseId])
   @@map("documents")
-}
-
-/// Document chunks for RAG retrieval
-model DocumentChunk {
-  id         String                      @id @default(cuid())
-  documentId String
-  document   Document                    @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  content    String
-  embedding  Unsupported("vector(1024)")?
-  chunkIndex Int
-  metadata   Json?
-  createdAt  DateTime                    @default(now())
-
-  @@index([documentId])
-  @@map("document_chunks")
 }
 
 model InvitationCode {

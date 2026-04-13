@@ -1,23 +1,29 @@
 /**
- * RAG Retriever
+ * RAG Retriever (RAGFlow)
  *
- * Retrieves relevant document chunks for a given query using
- * cosine similarity search with pgvector.
+ * Retrieves relevant document chunks for a given query
+ * using RAGFlow's hybrid search (BM25 + vector similarity).
  */
 
 import { prisma } from '@/lib/server/db';
 import { createLogger } from '@/lib/logger';
-import { generateEmbedding, formatEmbeddingForStorage } from './embeddings';
+import * as ragflow from './ragflow-client';
 import type { RetrievedChunk, RetrievalOptions } from './types';
 
 const log = createLogger('RAG:Retriever');
 
 // Default retrieval parameters
-const DEFAULT_TOP_K = 5;
-const DEFAULT_SIMILARITY_THRESHOLD = 0.7;
+const DEFAULT_TOP_K = (() => {
+  const parsed = Number.parseInt(process.env.RAG_TOP_K || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+})();
+const DEFAULT_SIMILARITY_THRESHOLD = (() => {
+  const parsed = Number.parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '');
+  return Number.isFinite(parsed) ? parsed : 0.3;
+})();
 
 /**
- * Retrieve relevant document chunks for a query
+ * Retrieve relevant document chunks for a query via RAGFlow
  */
 export async function retrieveChunks(options: RetrievalOptions): Promise<RetrievedChunk[]> {
   const {
@@ -27,65 +33,83 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
     similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD,
     documentIds,
   } = options;
-  const normalizedDocumentIds = documentIds?.length
-    ? [...new Set(documentIds.filter((id) => id.trim().length > 0))]
-    : null;
+
+  if (!ragflow.isConfigured()) {
+    log.warn('RAGFlow is not configured — returning empty results');
+    return [];
+  }
 
   log.info(`Retrieving chunks for course ${courseId}, query length: ${query.length}`);
 
-  // Generate embedding for the query
-  const queryEmbedding = await generateEmbedding(query);
-  const embeddingStr = formatEmbeddingForStorage(queryEmbedding);
+  // Look up the RAGFlow dataset ID for this course
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { ragflowDatasetId: true },
+  });
 
-  // Perform similarity search using pgvector
-  // Join with documents table to filter by courseId and get document name
-  const results = await prisma.$queryRawUnsafe<
-    Array<{
-      id: string;
-      documentId: string;
-      documentName: string;
-      content: string;
-      metadata: string | null;
-      similarity: number;
-    }>
-  >(
-    `SELECT
-      dc.id,
-      dc."documentId",
-      d.name as "documentName",
-      dc.content,
-      dc.metadata::text,
-      1 - (dc.embedding <=> $1::vector) as similarity
-    FROM document_chunks dc
-    JOIN documents d ON dc."documentId" = d.id
-    WHERE d."courseId" = $2
-      AND dc.embedding IS NOT NULL
-      AND 1 - (dc.embedding <=> $1::vector) >= $3
-      AND ($5::text[] IS NULL OR dc."documentId" = ANY($5))
-    ORDER BY dc.embedding <=> $1::vector
-    LIMIT $4`,
-    embeddingStr,
-    courseId,
-    similarityThreshold,
+  if (!course?.ragflowDatasetId) {
+    log.info(`No RAGFlow dataset for course ${courseId} — no documents indexed`);
+    return [];
+  }
+
+  // Map OpenMAIC document IDs to RAGFlow document IDs (if filtering)
+  let ragflowDocIds: string[] | undefined;
+  if (documentIds?.length) {
+    const docs = await prisma.document.findMany({
+      where: { id: { in: documentIds }, ragflowDocumentId: { not: null } },
+      select: { id: true, ragflowDocumentId: true },
+    });
+    ragflowDocIds = docs.map((d) => d.ragflowDocumentId).filter((id): id is string => id !== null);
+
+    if (ragflowDocIds.length === 0) {
+      log.info('None of the filtered documents have been indexed in RAGFlow');
+      return [];
+    }
+  }
+
+  // Call RAGFlow retrieval
+  const chunks = await ragflow.retrieve({
+    datasetIds: [course.ragflowDatasetId],
+    question: query,
     topK,
-    normalizedDocumentIds,
-  );
+    similarityThreshold,
+    documentIds: ragflowDocIds,
+  });
 
-  log.info(`Retrieved ${results.length} relevant chunks`);
+  log.info(`Retrieved ${chunks.length} relevant chunks`);
 
-  // Parse and return results
-  return results.map((row) => ({
-    id: row.id,
-    documentId: row.documentId,
-    documentName: row.documentName,
-    content: row.content,
-    similarity: row.similarity,
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-  }));
+  // Resolve local document names from RAGFlow document IDs
+  // RAGFlow returns documentName as document_keyword, but we prefer our local names
+  const ragflowDocIdSet = new Set(chunks.map((c) => c.documentId));
+  const localDocs =
+    ragflowDocIdSet.size > 0
+      ? await prisma.document.findMany({
+          where: { ragflowDocumentId: { in: [...ragflowDocIdSet] } },
+          select: { id: true, name: true, ragflowDocumentId: true },
+        })
+      : [];
+
+  const docNameMap = new Map<string, { id: string; name: string }>();
+  for (const doc of localDocs) {
+    if (doc.ragflowDocumentId) {
+      docNameMap.set(doc.ragflowDocumentId, { id: doc.id, name: doc.name });
+    }
+  }
+
+  return chunks.map((chunk) => {
+    const localDoc = docNameMap.get(chunk.documentId);
+    return {
+      id: chunk.id,
+      documentId: localDoc?.id || chunk.documentId,
+      documentName: localDoc?.name || chunk.documentName,
+      content: chunk.content,
+      similarity: chunk.similarity,
+    };
+  });
 }
 
 /**
- * Retrieve chunks from multiple courses (for cross-course context)
+ * Retrieve chunks from multiple courses (cross-course context)
  */
 export async function retrieveChunksFromCourses(
   courseIds: string[],
@@ -93,54 +117,59 @@ export async function retrieveChunksFromCourses(
   topK: number = DEFAULT_TOP_K,
   similarityThreshold: number = DEFAULT_SIMILARITY_THRESHOLD,
 ): Promise<RetrievedChunk[]> {
-  if (courseIds.length === 0) {
+  if (courseIds.length === 0 || !ragflow.isConfigured()) {
     return [];
   }
 
-  const queryEmbedding = await generateEmbedding(query);
-  const embeddingStr = formatEmbeddingForStorage(queryEmbedding);
+  // Look up RAGFlow dataset IDs for all courses
+  const courses = await prisma.course.findMany({
+    where: { id: { in: courseIds }, ragflowDatasetId: { not: null } },
+    select: { ragflowDatasetId: true },
+  });
 
-  // Build course ID placeholders
-  const coursePlaceholders = courseIds.map((_, i) => `$${i + 4}`).join(', ');
+  const datasetIds = courses
+    .map((c) => c.ragflowDatasetId)
+    .filter((id): id is string => id !== null);
 
-  const results = await prisma.$queryRawUnsafe<
-    Array<{
-      id: string;
-      documentId: string;
-      documentName: string;
-      content: string;
-      metadata: string | null;
-      similarity: number;
-    }>
-  >(
-    `SELECT
-      dc.id,
-      dc."documentId",
-      d.name as "documentName",
-      dc.content,
-      dc.metadata::text,
-      1 - (dc.embedding <=> $1::vector) as similarity
-    FROM document_chunks dc
-    JOIN documents d ON dc."documentId" = d.id
-    WHERE d."courseId" IN (${coursePlaceholders})
-      AND dc.embedding IS NOT NULL
-      AND 1 - (dc.embedding <=> $1::vector) >= $2
-    ORDER BY dc.embedding <=> $1::vector
-    LIMIT $3`,
-    embeddingStr,
-    similarityThreshold,
+  if (datasetIds.length === 0) {
+    return [];
+  }
+
+  // RAGFlow supports searching across multiple datasets in one call
+  const chunks = await ragflow.retrieve({
+    datasetIds,
+    question: query,
     topK,
-    ...courseIds,
-  );
+    similarityThreshold,
+  });
 
-  return results.map((row) => ({
-    id: row.id,
-    documentId: row.documentId,
-    documentName: row.documentName,
-    content: row.content,
-    similarity: row.similarity,
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-  }));
+  // Resolve local document info
+  const ragflowDocIdSet = new Set(chunks.map((c) => c.documentId));
+  const localDocs =
+    ragflowDocIdSet.size > 0
+      ? await prisma.document.findMany({
+          where: { ragflowDocumentId: { in: [...ragflowDocIdSet] } },
+          select: { id: true, name: true, ragflowDocumentId: true },
+        })
+      : [];
+
+  const docNameMap = new Map<string, { id: string; name: string }>();
+  for (const doc of localDocs) {
+    if (doc.ragflowDocumentId) {
+      docNameMap.set(doc.ragflowDocumentId, { id: doc.id, name: doc.name });
+    }
+  }
+
+  return chunks.map((chunk) => {
+    const localDoc = docNameMap.get(chunk.documentId);
+    return {
+      id: chunk.id,
+      documentId: localDoc?.id || chunk.documentId,
+      documentName: localDoc?.name || chunk.documentName,
+      content: chunk.content,
+      similarity: chunk.similarity,
+    };
+  });
 }
 
 /**

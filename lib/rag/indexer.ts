@@ -1,227 +1,202 @@
 /**
- * Document Indexer
+ * Document Indexer (RAGFlow)
  *
- * Processes uploaded documents for RAG retrieval:
- * 1. Extracts text content using existing parsers
- * 2. Chunks the content into semantic segments
- * 3. Generates embeddings for each chunk
- * 4. Stores chunks with embeddings in PostgreSQL (pgvector)
+ * Processes uploaded documents for RAG retrieval via RAGFlow:
+ * 1. Ensures a RAGFlow dataset exists for the course
+ * 2. Uploads the document file to RAGFlow
+ * 3. Triggers RAGFlow parsing (chunking + embedding)
+ * 4. Polls for completion and updates local status
  */
 
 import { promises as fs } from 'fs';
 import path from 'path';
 import { prisma } from '@/lib/server/db';
-import { parseDocument } from '@/lib/document/parse-document';
 import { createLogger } from '@/lib/logger';
-import { chunkDocument } from './chunker';
-import { generateEmbeddings, formatEmbeddingForStorage } from './embeddings';
-import type { IndexingResult, ChunkingConfig } from './types';
+import * as ragflow from './ragflow-client';
+import type { IndexingResult } from './types';
 
 const log = createLogger('RAG:Indexer');
 
-// Batch size for embedding generation — small default to avoid EPIPE on size-limited servers
-const EMBEDDING_BATCH_SIZE = (() => {
-  const parsed = Number.parseInt(process.env.RAG_EMBEDDING_BATCH_SIZE || '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
+// Polling configuration
+const POLL_INITIAL_INTERVAL_MS = 2000;
+const POLL_MAX_INTERVAL_MS = 5000;
+const POLL_TIMEOUT_MS = (() => {
+  const parsed = Number.parseInt(process.env.RAGFLOW_PARSE_TIMEOUT_MS || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000; // 5 min default
 })();
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+// Stale indexing threshold — auto-reset documents stuck in 'indexing' for this long
+const STALE_INDEXING_MS = 10 * 60 * 1000; // 10 minutes
 
-function isConnectionError(error: unknown): boolean {
-  const msg = getErrorMessage(error);
-  return /ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(msg);
-}
-
-async function embedRangeWithFallback(
-  chunkTexts: string[],
-  start: number,
-  end: number,
-  targetEmbeddings: Array<number[] | undefined>,
-): Promise<void> {
-  const batch = chunkTexts.slice(start, end);
-
-  try {
-    const embeddings = await generateEmbeddings(batch);
-    if (embeddings.length !== batch.length) {
-      throw new Error(
-        `Embedding count mismatch: got ${embeddings.length}, expected ${batch.length}`,
-      );
-    }
-
-    for (let i = 0; i < embeddings.length; i++) {
-      targetEmbeddings[start + i] = embeddings[i];
-    }
-  } catch (error) {
-    const size = end - start;
-
-    // Connection-level failures affect all chunks — no point splitting
-    if (isConnectionError(error)) {
-      throw new Error(
-        `Embedding server unreachable for chunks ${start + 1}-${end}: ${getErrorMessage(error)}`,
-      );
-    }
-
-    if (size <= 1) {
-      throw new Error(`Embedding failed for chunk ${start + 1}: ${getErrorMessage(error)}`);
-    }
-
-    const mid = start + Math.floor(size / 2);
-    log.warn(
-      `Embedding batch failed for chunks ${start + 1}-${end}; splitting into ${start + 1}-${mid} and ${mid + 1}-${end}`,
-    );
-    await embedRangeWithFallback(chunkTexts, start, mid, targetEmbeddings);
-    await embedRangeWithFallback(chunkTexts, mid, end, targetEmbeddings);
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Index a document for RAG retrieval
- *
- * @param documentId - The document ID from the database
- * @param config - Optional chunking configuration
- * @returns Indexing result with status and chunk count
+ * Ensure a RAGFlow dataset exists for the given course.
+ * Creates one if missing, with race-condition protection.
  */
-export async function indexDocument(
-  documentId: string,
-  config?: ChunkingConfig,
-): Promise<IndexingResult> {
+async function ensureDataset(courseId: string, courseName: string): Promise<string> {
+  // Check current value
+  const course = await prisma.course.findUniqueOrThrow({ where: { id: courseId } });
+
+  if (course.ragflowDatasetId) {
+    return course.ragflowDatasetId;
+  }
+
+  // Create dataset in RAGFlow
+  const datasetId = await ragflow.createDataset(courseName, {
+    chunkMethod: process.env.RAGFLOW_CHUNK_METHOD,
+  });
+
+  // Race-safe update: only set if still null (another concurrent upload may have beaten us)
+  const updated = await prisma.course.updateMany({
+    where: { id: courseId, ragflowDatasetId: null },
+    data: { ragflowDatasetId: datasetId },
+  });
+
+  if (updated.count === 0) {
+    // Another process already created a dataset — use theirs, clean up ours
+    const existing = await prisma.course.findUniqueOrThrow({ where: { id: courseId } });
+    log.warn(
+      `Race: another process created dataset for course ${courseId}. Using ${existing.ragflowDatasetId}, cleaning up ${datasetId}`,
+    );
+    await ragflow.deleteDataset(datasetId).catch(() => {});
+    return existing.ragflowDatasetId!;
+  }
+
+  return datasetId;
+}
+
+/**
+ * Poll RAGFlow until a document's parsing is complete or timed out.
+ * Returns the final run status.
+ */
+async function pollParsingStatus(
+  datasetId: string,
+  ragflowDocId: string,
+): Promise<'DONE' | 'FAIL'> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  let interval = POLL_INITIAL_INTERVAL_MS;
+
+  while (Date.now() < deadline) {
+    await sleep(interval);
+
+    const status = await ragflow.getDocumentStatus(datasetId, ragflowDocId);
+
+    if (status.run === 'DONE') return 'DONE';
+    if (status.run === 'FAIL') return 'FAIL';
+    // CANCEL is treated as failure
+    if (status.run === 'CANCEL') return 'FAIL';
+
+    // Back off gradually
+    interval = Math.min(interval + 500, POLL_MAX_INTERVAL_MS);
+  }
+
+  throw new Error(`Parsing timed out after ${POLL_TIMEOUT_MS / 1000}s`);
+}
+
+/**
+ * Index a document for RAG retrieval via RAGFlow
+ */
+export async function indexDocument(documentId: string): Promise<IndexingResult> {
   log.info(`Starting indexing for document: ${documentId}`);
 
+  // Check RAGFlow availability
+  if (!ragflow.isConfigured()) {
+    log.warn('RAGFlow is not configured — skipping indexing');
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { indexStatus: 'failed', indexError: 'RAGFlow is not configured' },
+    });
+    return { documentId, status: 'failed', chunksCreated: 0, error: 'RAGFlow is not configured' };
+  }
+
   try {
-    // Fetch document metadata and update status atomically
-    const document = await prisma.document.update({
+    // Fetch document with course info
+    const document = await prisma.document.findUniqueOrThrow({
+      where: { id: documentId },
+      include: { course: true },
+    });
+
+    // Guard: prevent concurrent indexing
+    if (document.indexStatus === 'indexing') {
+      // Check for stale indexing (poll loop may have died)
+      const age = Date.now() - document.createdAt.getTime();
+      if (age < STALE_INDEXING_MS) {
+        log.warn(`Document ${documentId} is already being indexed — skipping`);
+        return { documentId, status: 'indexing', chunksCreated: 0 };
+      }
+      log.warn(`Document ${documentId} has been stuck in 'indexing' for >10min — resetting`);
+    }
+
+    // Set status to indexing
+    await prisma.document.update({
       where: { id: documentId },
       data: { indexStatus: 'indexing', indexError: null },
     });
 
-    // Read file from storage
+    // 1. Ensure RAGFlow dataset exists for the course
+    const datasetId = await ensureDataset(document.courseId, document.course.name);
+
+    // 2. Read file from disk
     const filePath = path.join(process.cwd(), document.storagePath);
     const fileBuffer = await fs.readFile(filePath);
-    const fileBlob = new Blob([fileBuffer], { type: document.mimeType });
-    const file = new File([fileBlob], document.name, { type: document.mimeType });
 
-    // Parse document to extract text
-    log.info(`Parsing document: ${document.name}`);
-    const parsed = await parseDocument({}, file);
+    // 3. Upload to RAGFlow
+    const ragflowDocId = await ragflow.uploadDocument(datasetId, fileBuffer, document.name);
 
-    if (!parsed.text || parsed.text.trim().length === 0) {
-      throw new Error('No text content extracted from document');
+    // 4. Save RAGFlow document ID to local DB
+    //    If this fails, clean up the RAGFlow document to prevent orphans
+    try {
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { ragflowDocumentId: ragflowDocId },
+      });
+    } catch (dbError) {
+      log.error(`Failed to save ragflowDocumentId — cleaning up RAGFlow document`, dbError);
+      await ragflow.deleteDocument(datasetId, [ragflowDocId]).catch(() => {});
+      throw dbError;
     }
 
-    // Determine document type from mime type
-    const docType = getDocumentType(document.mimeType);
+    // 5. Trigger parsing
+    await ragflow.startParsing(datasetId, [ragflowDocId]);
 
-    // Strip base64-encoded images/data URIs before chunking — they bloat chunks
-    // and are meaningless for text embedding
-    const cleanedText = parsed.text.replace(/!\[([^\]]*)\]\(data:[^)]+\)/g, (_, alt) =>
-      alt ? `[image: ${alt}]` : '[image]',
-    );
+    // 6. Poll for completion
+    const finalStatus = await pollParsingStatus(datasetId, ragflowDocId);
 
-    // Chunk the document
-    log.info(
-      `Chunking document: ${cleanedText.length} chars (original: ${parsed.text.length} chars)`,
-    );
-    const chunks = chunkDocument(cleanedText, document.name, docType, config);
+    if (finalStatus === 'DONE') {
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { indexStatus: 'indexed', indexError: null },
+      });
 
-    if (chunks.length === 0) {
-      throw new Error('No chunks created from document');
+      log.info(`Successfully indexed document: ${documentId}`);
+      return { documentId, status: 'indexed', chunksCreated: 0 };
+    } else {
+      const errorMsg = 'RAGFlow parsing failed';
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { indexStatus: 'failed', indexError: errorMsg },
+      });
+
+      return { documentId, status: 'failed', chunksCreated: 0, error: errorMsg };
     }
-
-    log.info(`Created ${chunks.length} chunks`);
-
-    // Delete existing chunks for this document (for re-indexing)
-    await prisma.documentChunk.deleteMany({
-      where: { documentId },
-    });
-
-    // Generate embeddings in batches
-    const chunkTexts = chunks.map((c) => c.content);
-    const allEmbeddings: Array<number[] | undefined> = new Array(chunkTexts.length);
-
-    for (let i = 0; i < chunkTexts.length; i += EMBEDDING_BATCH_SIZE) {
-      const batchEnd = Math.min(i + EMBEDDING_BATCH_SIZE, chunkTexts.length);
-      log.info(
-        `Generating embeddings batch ${Math.floor(i / EMBEDDING_BATCH_SIZE) + 1} (chunks ${i + 1}-${batchEnd}/${chunkTexts.length})`,
-      );
-      await embedRangeWithFallback(chunkTexts, i, batchEnd, allEmbeddings);
-    }
-
-    const resolvedEmbeddings = allEmbeddings.map((embedding, idx) => {
-      if (!embedding) {
-        throw new Error(`Missing embedding for chunk ${idx + 1}`);
-      }
-      return embedding;
-    });
-
-    // Store chunks with embeddings using batched raw SQL for pgvector
-    log.info(`Storing ${chunks.length} chunks with embeddings`);
-
-    const INSERT_BATCH_SIZE = 50;
-    for (let batchStart = 0; batchStart < chunks.length; batchStart += INSERT_BATCH_SIZE) {
-      const batchEnd = Math.min(batchStart + INSERT_BATCH_SIZE, chunks.length);
-      const valuePlaceholders: string[] = [];
-      const params: unknown[] = [];
-
-      for (let i = batchStart; i < batchEnd; i++) {
-        const chunk = chunks[i];
-        const embedding = resolvedEmbeddings[i];
-        const offset = (i - batchStart) * 6;
-        valuePlaceholders.push(
-          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}::vector, $${offset + 5}, $${offset + 6}, NOW())`,
-        );
-        params.push(
-          `chunk_${documentId}_${i}`,
-          documentId,
-          chunk.content,
-          formatEmbeddingForStorage(embedding),
-          chunk.chunkIndex,
-          JSON.stringify(chunk.metadata),
-        );
-      }
-
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO document_chunks (id, "documentId", content, embedding, "chunkIndex", metadata, "createdAt")
-         VALUES ${valuePlaceholders.join(', ')}`,
-        ...params,
-      );
-    }
-
-    // Update document status to indexed
-    await prisma.document.update({
-      where: { id: documentId },
-      data: { indexStatus: 'indexed', indexError: null },
-    });
-
-    log.info(`Successfully indexed document: ${documentId} (${chunks.length} chunks)`);
-
-    return {
-      documentId,
-      status: 'indexed',
-      chunksCreated: chunks.length,
-    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     log.error(`Failed to index document ${documentId}:`, error);
 
-    // Update document status to failed
     await prisma.document.update({
       where: { id: documentId },
       data: { indexStatus: 'failed', indexError: errorMessage },
     });
 
-    return {
-      documentId,
-      status: 'failed',
-      chunksCreated: 0,
-      error: errorMessage,
-    };
+    return { documentId, status: 'failed', chunksCreated: 0, error: errorMessage };
   }
 }
 
 /**
- * Index all pending documents in a course
+ * Index all pending/failed documents in a course
  */
 export async function indexCourseDocuments(courseId: string): Promise<IndexingResult[]> {
   const documents = await prisma.document.findMany({
@@ -244,32 +219,28 @@ export async function indexCourseDocuments(courseId: string): Promise<IndexingRe
 }
 
 /**
- * Re-index a document (delete and recreate chunks)
+ * Re-index a document (delete old RAGFlow doc, upload fresh)
  */
 export async function reindexDocument(documentId: string): Promise<IndexingResult> {
-  // Reset status to pending first
+  const document = await prisma.document.findUniqueOrThrow({
+    where: { id: documentId },
+    include: { course: true },
+  });
+
+  // Delete old RAGFlow document if it exists
+  if (document.ragflowDocumentId && document.course.ragflowDatasetId) {
+    try {
+      await ragflow.deleteDocument(document.course.ragflowDatasetId, [document.ragflowDocumentId]);
+    } catch (error) {
+      log.warn(`Failed to delete old RAGFlow document during reindex:`, error);
+    }
+  }
+
+  // Clear RAGFlow document ID and reset status
   await prisma.document.update({
     where: { id: documentId },
-    data: { indexStatus: 'pending', indexError: null },
+    data: { ragflowDocumentId: null, indexStatus: 'pending', indexError: null },
   });
 
   return indexDocument(documentId);
-}
-
-/**
- * Get document type from MIME type
- */
-function getDocumentType(mimeType: string): string {
-  const mimeMap: Record<string, string> = {
-    'application/pdf': 'pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
-    'text/plain': 'text',
-    'text/markdown': 'markdown',
-    'image/png': 'image',
-    'image/jpeg': 'image',
-    'image/webp': 'image',
-  };
-
-  return mimeMap[mimeType] || 'unknown';
 }

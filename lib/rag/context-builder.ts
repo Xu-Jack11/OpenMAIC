@@ -8,13 +8,19 @@
 import { prisma } from '@/lib/server/db';
 import { createLogger } from '@/lib/logger';
 import { retrieveChunks } from './retriever';
-import { estimateTokens } from './chunker';
 import type { RetrievedChunk, DocumentContext, RetrievalOptions } from './types';
 
 const log = createLogger('RAG:ContextBuilder');
 
 // Default maximum tokens for context
 const DEFAULT_MAX_CONTEXT_TOKENS = 2000;
+
+/**
+ * Rough token estimation (~4 chars per token)
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
 
 /**
  * Build document context for prompt injection
@@ -100,19 +106,7 @@ export function formatChunksAsContext(
  * Format a single chunk for context
  */
 function formatChunk(chunk: RetrievedChunk, content: string): string {
-  const header = `### 来源: ${chunk.documentName}`;
-  const metadata: string[] = [];
-
-  if (chunk.metadata?.pageNumber) {
-    metadata.push(`第${chunk.metadata.pageNumber}页`);
-  }
-  if (chunk.metadata?.sectionTitle) {
-    metadata.push(`章节: ${chunk.metadata.sectionTitle}`);
-  }
-
-  const metaLine = metadata.length > 0 ? `(${metadata.join(', ')})` : '';
-
-  return `${header} ${metaLine}\n\n${content}`;
+  return `### 来源: ${chunk.documentName}\n\n${content}`;
 }
 
 /**
@@ -172,13 +166,11 @@ function truncateToTokens(text: string, targetTokens: number): string {
 export async function getDocumentContextSummary(courseId: string): Promise<{
   documentsAvailable: number;
   documentsIndexed: number;
-  totalChunks: number;
 }> {
-  const [documentsAvailable, documentsIndexed, totalChunks] = await Promise.all([
+  const [documentsAvailable, documentsIndexed] = await Promise.all([
     prisma.document.count({ where: { courseId } }),
     prisma.document.count({ where: { courseId, indexStatus: 'indexed' } }),
-    prisma.documentChunk.count({ where: { document: { courseId } } }),
   ]);
 
-  return { documentsAvailable, documentsIndexed, totalChunks };
+  return { documentsAvailable, documentsIndexed };
 }

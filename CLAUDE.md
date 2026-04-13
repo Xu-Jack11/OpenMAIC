@@ -106,7 +106,7 @@ Four scene types defined in `lib/types/stage.ts` as `SceneType`:
 
 - **Zustand stores** in `lib/store/`: `stage.ts` (scenes, current scene, mode), `canvas.ts` (editor state, whiteboard), `settings.ts` (provider config, TTS, ASR, persisted to localStorage), `keyboard.ts`, `media-generation.ts`
 - **Client-side persistence**: Dexie (IndexedDB) for classroom data, localStorage for settings
-- **Server-side persistence**: PostgreSQL via Prisma 7 for users, courses, classrooms, documents, RAG chunks
+- **Server-side persistence**: PostgreSQL via Prisma 7 for users, courses, classrooms, documents (RAG chunks stored in RAGFlow)
   - Prisma config: no `url` in datasource block; `prisma.config.ts` sets `datasource.url` for migrations; `lib/server/db.ts` passes `datasourceUrl` to PrismaClient via `@prisma/adapter-pg`
   - Generated client output: `lib/generated/prisma/`
   - Migrations: `npx prisma migrate dev --name <name>`; `npx prisma generate` to regenerate client
@@ -119,16 +119,16 @@ Four scene types defined in `lib/types/stage.ts` as `SceneType`:
 - **RBAC**: TEACHER (edit courses) | STUDENT (read-only), enforced via `lib/server/permissions.ts`
 - **API format**: REST with `{ success: true, data }` or `{ success: false, errorCode, error, details }`
 
-### RAG System
+### RAG System (RAGFlow)
 
-`lib/rag/` provides document indexing and retrieval-augmented generation:
-- `indexer.ts` -- Splits documents into chunks, generates embeddings, stores in `DocumentChunk` model with pgvector
-- `retriever.ts` -- Vector similarity search against stored chunks
-- `context-builder.ts` -- Assembles retrieved chunks into prompt context
-- `embeddings.ts` -- Embedding provider abstraction (OpenAI-compatible default with retry/timeout, local fallback). Default dimensions: 1024
-- `chunker.ts` -- Token-aware text splitting with overlap
-- Config via env vars: `EMBEDDING_PROVIDER`, `OPENAI_EMBEDDING_API_KEY`, `RAG_CHUNK_SIZE`, `RAG_TOP_K`, etc.
-- RAG is integrated into both classroom generation (`classroom-generation.ts`) and live chat (`/api/chat`) via the shared `buildDocumentContext()` facade in `lib/rag/index.ts`
+`lib/rag/` provides document indexing and retrieval-augmented generation, backed by RAGFlow as an external service:
+- `ragflow-client.ts` -- HTTP client wrapping RAGFlow REST API (`/api/v1`). Handles datasets, document upload, parsing, and retrieval
+- `indexer.ts` -- Uploads documents to RAGFlow, triggers parsing, polls for completion. 1 course = 1 RAGFlow dataset (mapped via `Course.ragflowDatasetId`)
+- `retriever.ts` -- Calls RAGFlow hybrid search (BM25 + vector similarity). Maps RAGFlow document IDs back to local Document records
+- `context-builder.ts` -- Assembles retrieved chunks into prompt context with token budgeting
+- Config via env vars: `RAGFLOW_BASE_URL`, `RAGFLOW_API_KEY`, `RAG_TOP_K`, `RAG_SIMILARITY_THRESHOLD`, `RAG_MAX_CONTEXT_TOKENS`
+- RAG is integrated into classroom generation (`classroom-generation.ts`), live chat (`/api/chat`), outlines streaming, and PBL chat via the shared `buildDocumentContext()` facade in `lib/rag/index.ts`
+- Graceful degradation: if RAGFlow is not configured or unreachable, all consumers continue without document context
 
 ### Document Parsing
 

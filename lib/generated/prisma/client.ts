@@ -75,11 +75,6 @@ export type Classroom = Prisma.ClassroomModel;
  */
 export type Document = Prisma.DocumentModel;
 /**
- * Model DocumentChunk
- * Document chunks for RAG retrieval
- */
-export type DocumentChunk = Prisma.DocumentChunkModel;
-/**
  * Model InvitationCode
  *
  */

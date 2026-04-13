@@ -6,6 +6,7 @@ import { authenticate, authenticateCourse } from '@/lib/server/auth/middleware';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import * as ragflow from '@/lib/rag/ragflow-client';
 
 const log = createLogger('Course DELETE');
 
@@ -115,7 +116,16 @@ export async function DELETE(
     log.warn('Failed to remove documents directory:', err);
   }
 
-  // Cascade deletes via Prisma relations (classrooms, documents, chunks, members, invites)
+  // Clean up RAGFlow dataset
+  if (course.ragflowDatasetId && ragflow.isConfigured()) {
+    try {
+      await ragflow.deleteDataset(course.ragflowDatasetId);
+    } catch (err) {
+      log.warn('Failed to delete RAGFlow dataset:', err);
+    }
+  }
+
+  // Cascade deletes via Prisma relations (classrooms, documents, members, invites)
   await prisma.course.delete({ where: { id: courseId } });
 
   return apiSuccess({ message: 'Course deleted' });

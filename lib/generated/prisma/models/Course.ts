@@ -30,6 +30,7 @@ export type CourseMinAggregateOutputType = {
   creatorId: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
+  ragflowDatasetId: string | null;
 };
 
 export type CourseMaxAggregateOutputType = {
@@ -39,6 +40,7 @@ export type CourseMaxAggregateOutputType = {
   creatorId: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
+  ragflowDatasetId: string | null;
 };
 
 export type CourseCountAggregateOutputType = {
@@ -48,6 +50,7 @@ export type CourseCountAggregateOutputType = {
   creatorId: number;
   createdAt: number;
   updatedAt: number;
+  ragflowDatasetId: number;
   _all: number;
 };
 
@@ -58,6 +61,7 @@ export type CourseMinAggregateInputType = {
   creatorId?: true;
   createdAt?: true;
   updatedAt?: true;
+  ragflowDatasetId?: true;
 };
 
 export type CourseMaxAggregateInputType = {
@@ -67,6 +71,7 @@ export type CourseMaxAggregateInputType = {
   creatorId?: true;
   createdAt?: true;
   updatedAt?: true;
+  ragflowDatasetId?: true;
 };
 
 export type CourseCountAggregateInputType = {
@@ -76,6 +81,7 @@ export type CourseCountAggregateInputType = {
   creatorId?: true;
   createdAt?: true;
   updatedAt?: true;
+  ragflowDatasetId?: true;
   _all?: true;
 };
 
@@ -159,6 +165,7 @@ export type CourseGroupByOutputType = {
   creatorId: string;
   createdAt: Date;
   updatedAt: Date;
+  ragflowDatasetId: string | null;
   _count: CourseCountAggregateOutputType | null;
   _min: CourseMinAggregateOutputType | null;
   _max: CourseMaxAggregateOutputType | null;
@@ -186,6 +193,7 @@ export type CourseWhereInput = {
   creatorId?: Prisma.StringFilter<'Course'> | string;
   createdAt?: Prisma.DateTimeFilter<'Course'> | Date | string;
   updatedAt?: Prisma.DateTimeFilter<'Course'> | Date | string;
+  ragflowDatasetId?: Prisma.StringNullableFilter<'Course'> | string | null;
   creator?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>;
   members?: Prisma.CourseMemberListRelationFilter;
   classrooms?: Prisma.ClassroomListRelationFilter;
@@ -200,6 +208,7 @@ export type CourseOrderByWithRelationInput = {
   creatorId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
   updatedAt?: Prisma.SortOrder;
+  ragflowDatasetId?: Prisma.SortOrderInput | Prisma.SortOrder;
   creator?: Prisma.UserOrderByWithRelationInput;
   members?: Prisma.CourseMemberOrderByRelationAggregateInput;
   classrooms?: Prisma.ClassroomOrderByRelationAggregateInput;
@@ -218,6 +227,7 @@ export type CourseWhereUniqueInput = Prisma.AtLeast<
     creatorId?: Prisma.StringFilter<'Course'> | string;
     createdAt?: Prisma.DateTimeFilter<'Course'> | Date | string;
     updatedAt?: Prisma.DateTimeFilter<'Course'> | Date | string;
+    ragflowDatasetId?: Prisma.StringNullableFilter<'Course'> | string | null;
     creator?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>;
     members?: Prisma.CourseMemberListRelationFilter;
     classrooms?: Prisma.ClassroomListRelationFilter;
@@ -234,6 +244,7 @@ export type CourseOrderByWithAggregationInput = {
   creatorId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
   updatedAt?: Prisma.SortOrder;
+  ragflowDatasetId?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.CourseCountOrderByAggregateInput;
   _max?: Prisma.CourseMaxOrderByAggregateInput;
   _min?: Prisma.CourseMinOrderByAggregateInput;
@@ -249,6 +260,7 @@ export type CourseScalarWhereWithAggregatesInput = {
   creatorId?: Prisma.StringWithAggregatesFilter<'Course'> | string;
   createdAt?: Prisma.DateTimeWithAggregatesFilter<'Course'> | Date | string;
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<'Course'> | Date | string;
+  ragflowDatasetId?: Prisma.StringNullableWithAggregatesFilter<'Course'> | string | null;
 };
 
 export type CourseCreateInput = {
@@ -257,6 +269,7 @@ export type CourseCreateInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   creator: Prisma.UserCreateNestedOneWithoutCreatedCoursesInput;
   members?: Prisma.CourseMemberCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomCreateNestedManyWithoutCourseInput;
@@ -271,6 +284,7 @@ export type CourseUncheckedCreateInput = {
   creatorId: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   members?: Prisma.CourseMemberUncheckedCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomUncheckedCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutCourseInput;
@@ -283,6 +297,7 @@ export type CourseUpdateInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   creator?: Prisma.UserUpdateOneRequiredWithoutCreatedCoursesNestedInput;
   members?: Prisma.CourseMemberUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUpdateManyWithoutCourseNestedInput;
@@ -297,6 +312,7 @@ export type CourseUncheckedUpdateInput = {
   creatorId?: Prisma.StringFieldUpdateOperationsInput | string;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   members?: Prisma.CourseMemberUncheckedUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUncheckedUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutCourseNestedInput;
@@ -310,6 +326,7 @@ export type CourseCreateManyInput = {
   creatorId: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
 };
 
 export type CourseUpdateManyMutationInput = {
@@ -318,6 +335,7 @@ export type CourseUpdateManyMutationInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type CourseUncheckedUpdateManyInput = {
@@ -327,6 +345,7 @@ export type CourseUncheckedUpdateManyInput = {
   creatorId?: Prisma.StringFieldUpdateOperationsInput | string;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type CourseListRelationFilter = {
@@ -346,6 +365,7 @@ export type CourseCountOrderByAggregateInput = {
   creatorId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
   updatedAt?: Prisma.SortOrder;
+  ragflowDatasetId?: Prisma.SortOrder;
 };
 
 export type CourseMaxOrderByAggregateInput = {
@@ -355,6 +375,7 @@ export type CourseMaxOrderByAggregateInput = {
   creatorId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
   updatedAt?: Prisma.SortOrder;
+  ragflowDatasetId?: Prisma.SortOrder;
 };
 
 export type CourseMinOrderByAggregateInput = {
@@ -364,6 +385,7 @@ export type CourseMinOrderByAggregateInput = {
   creatorId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
   updatedAt?: Prisma.SortOrder;
+  ragflowDatasetId?: Prisma.SortOrder;
 };
 
 export type CourseScalarRelationFilter = {
@@ -567,6 +589,7 @@ export type CourseCreateWithoutCreatorInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   members?: Prisma.CourseMemberCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentCreateNestedManyWithoutCourseInput;
@@ -579,6 +602,7 @@ export type CourseUncheckedCreateWithoutCreatorInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   members?: Prisma.CourseMemberUncheckedCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomUncheckedCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutCourseInput;
@@ -636,6 +660,7 @@ export type CourseScalarWhereInput = {
   creatorId?: Prisma.StringFilter<'Course'> | string;
   createdAt?: Prisma.DateTimeFilter<'Course'> | Date | string;
   updatedAt?: Prisma.DateTimeFilter<'Course'> | Date | string;
+  ragflowDatasetId?: Prisma.StringNullableFilter<'Course'> | string | null;
 };
 
 export type CourseCreateWithoutMembersInput = {
@@ -644,6 +669,7 @@ export type CourseCreateWithoutMembersInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   creator: Prisma.UserCreateNestedOneWithoutCreatedCoursesInput;
   classrooms?: Prisma.ClassroomCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentCreateNestedManyWithoutCourseInput;
@@ -657,6 +683,7 @@ export type CourseUncheckedCreateWithoutMembersInput = {
   creatorId: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   classrooms?: Prisma.ClassroomUncheckedCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutCourseInput;
   invitationCodes?: Prisma.InvitationCodeUncheckedCreateNestedManyWithoutCourseInput;
@@ -696,6 +723,7 @@ export type CourseUpdateWithoutMembersInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   creator?: Prisma.UserUpdateOneRequiredWithoutCreatedCoursesNestedInput;
   classrooms?: Prisma.ClassroomUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUpdateManyWithoutCourseNestedInput;
@@ -709,6 +737,7 @@ export type CourseUncheckedUpdateWithoutMembersInput = {
   creatorId?: Prisma.StringFieldUpdateOperationsInput | string;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   classrooms?: Prisma.ClassroomUncheckedUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutCourseNestedInput;
   invitationCodes?: Prisma.InvitationCodeUncheckedUpdateManyWithoutCourseNestedInput;
@@ -720,6 +749,7 @@ export type CourseCreateWithoutClassroomsInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   creator: Prisma.UserCreateNestedOneWithoutCreatedCoursesInput;
   members?: Prisma.CourseMemberCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentCreateNestedManyWithoutCourseInput;
@@ -733,6 +763,7 @@ export type CourseUncheckedCreateWithoutClassroomsInput = {
   creatorId: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   members?: Prisma.CourseMemberUncheckedCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutCourseInput;
   invitationCodes?: Prisma.InvitationCodeUncheckedCreateNestedManyWithoutCourseInput;
@@ -772,6 +803,7 @@ export type CourseUpdateWithoutClassroomsInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   creator?: Prisma.UserUpdateOneRequiredWithoutCreatedCoursesNestedInput;
   members?: Prisma.CourseMemberUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUpdateManyWithoutCourseNestedInput;
@@ -785,6 +817,7 @@ export type CourseUncheckedUpdateWithoutClassroomsInput = {
   creatorId?: Prisma.StringFieldUpdateOperationsInput | string;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   members?: Prisma.CourseMemberUncheckedUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutCourseNestedInput;
   invitationCodes?: Prisma.InvitationCodeUncheckedUpdateManyWithoutCourseNestedInput;
@@ -796,6 +829,7 @@ export type CourseCreateWithoutDocumentsInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   creator: Prisma.UserCreateNestedOneWithoutCreatedCoursesInput;
   members?: Prisma.CourseMemberCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomCreateNestedManyWithoutCourseInput;
@@ -809,6 +843,7 @@ export type CourseUncheckedCreateWithoutDocumentsInput = {
   creatorId: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   members?: Prisma.CourseMemberUncheckedCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomUncheckedCreateNestedManyWithoutCourseInput;
   invitationCodes?: Prisma.InvitationCodeUncheckedCreateNestedManyWithoutCourseInput;
@@ -848,6 +883,7 @@ export type CourseUpdateWithoutDocumentsInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   creator?: Prisma.UserUpdateOneRequiredWithoutCreatedCoursesNestedInput;
   members?: Prisma.CourseMemberUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUpdateManyWithoutCourseNestedInput;
@@ -861,6 +897,7 @@ export type CourseUncheckedUpdateWithoutDocumentsInput = {
   creatorId?: Prisma.StringFieldUpdateOperationsInput | string;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   members?: Prisma.CourseMemberUncheckedUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUncheckedUpdateManyWithoutCourseNestedInput;
   invitationCodes?: Prisma.InvitationCodeUncheckedUpdateManyWithoutCourseNestedInput;
@@ -872,6 +909,7 @@ export type CourseCreateWithoutInvitationCodesInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   creator: Prisma.UserCreateNestedOneWithoutCreatedCoursesInput;
   members?: Prisma.CourseMemberCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomCreateNestedManyWithoutCourseInput;
@@ -885,6 +923,7 @@ export type CourseUncheckedCreateWithoutInvitationCodesInput = {
   creatorId: string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
   members?: Prisma.CourseMemberUncheckedCreateNestedManyWithoutCourseInput;
   classrooms?: Prisma.ClassroomUncheckedCreateNestedManyWithoutCourseInput;
   documents?: Prisma.DocumentUncheckedCreateNestedManyWithoutCourseInput;
@@ -924,6 +963,7 @@ export type CourseUpdateWithoutInvitationCodesInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   creator?: Prisma.UserUpdateOneRequiredWithoutCreatedCoursesNestedInput;
   members?: Prisma.CourseMemberUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUpdateManyWithoutCourseNestedInput;
@@ -937,6 +977,7 @@ export type CourseUncheckedUpdateWithoutInvitationCodesInput = {
   creatorId?: Prisma.StringFieldUpdateOperationsInput | string;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   members?: Prisma.CourseMemberUncheckedUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUncheckedUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutCourseNestedInput;
@@ -948,6 +989,7 @@ export type CourseCreateManyCreatorInput = {
   description?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  ragflowDatasetId?: string | null;
 };
 
 export type CourseUpdateWithoutCreatorInput = {
@@ -956,6 +998,7 @@ export type CourseUpdateWithoutCreatorInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   members?: Prisma.CourseMemberUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUpdateManyWithoutCourseNestedInput;
@@ -968,6 +1011,7 @@ export type CourseUncheckedUpdateWithoutCreatorInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   members?: Prisma.CourseMemberUncheckedUpdateManyWithoutCourseNestedInput;
   classrooms?: Prisma.ClassroomUncheckedUpdateManyWithoutCourseNestedInput;
   documents?: Prisma.DocumentUncheckedUpdateManyWithoutCourseNestedInput;
@@ -980,6 +1024,7 @@ export type CourseUncheckedUpdateManyWithoutCreatorInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  ragflowDatasetId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 /**
@@ -1060,6 +1105,7 @@ export type CourseSelect<
     creatorId?: boolean;
     createdAt?: boolean;
     updatedAt?: boolean;
+    ragflowDatasetId?: boolean;
     creator?: boolean | Prisma.UserDefaultArgs<ExtArgs>;
     members?: boolean | Prisma.Course$membersArgs<ExtArgs>;
     classrooms?: boolean | Prisma.Course$classroomsArgs<ExtArgs>;
@@ -1080,6 +1126,7 @@ export type CourseSelectCreateManyAndReturn<
     creatorId?: boolean;
     createdAt?: boolean;
     updatedAt?: boolean;
+    ragflowDatasetId?: boolean;
     creator?: boolean | Prisma.UserDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['course']
@@ -1095,6 +1142,7 @@ export type CourseSelectUpdateManyAndReturn<
     creatorId?: boolean;
     createdAt?: boolean;
     updatedAt?: boolean;
+    ragflowDatasetId?: boolean;
     creator?: boolean | Prisma.UserDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['course']
@@ -1107,12 +1155,13 @@ export type CourseSelectScalar = {
   creatorId?: boolean;
   createdAt?: boolean;
   updatedAt?: boolean;
+  ragflowDatasetId?: boolean;
 };
 
 export type CourseOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  'id' | 'name' | 'description' | 'creatorId' | 'createdAt' | 'updatedAt',
+  'id' | 'name' | 'description' | 'creatorId' | 'createdAt' | 'updatedAt' | 'ragflowDatasetId',
   ExtArgs['result']['course']
 >;
 export type CourseInclude<
@@ -1155,6 +1204,10 @@ export type $CoursePayload<
       creatorId: string;
       createdAt: Date;
       updatedAt: Date;
+      /**
+       * RAGFlow dataset ID for this course (created on first document upload)
+       */
+      ragflowDatasetId: string | null;
     },
     ExtArgs['result']['course']
   >;
@@ -1760,6 +1813,7 @@ export interface CourseFieldRefs {
   readonly creatorId: Prisma.FieldRef<'Course', 'String'>;
   readonly createdAt: Prisma.FieldRef<'Course', 'DateTime'>;
   readonly updatedAt: Prisma.FieldRef<'Course', 'DateTime'>;
+  readonly ragflowDatasetId: Prisma.FieldRef<'Course', 'String'>;
 }
 
 // Custom InputTypes

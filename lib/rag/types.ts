@@ -2,29 +2,8 @@
  * RAG Module Types
  *
  * Type definitions for the RAG (Retrieval-Augmented Generation) system
- * that provides document context for classroom generation and discussions.
+ * backed by RAGFlow for document indexing and retrieval.
  */
-
-/**
- * Document chunk with metadata for storage
- */
-export interface DocumentChunkData {
-  content: string;
-  chunkIndex: number;
-  metadata?: ChunkMetadata;
-}
-
-/**
- * Chunk metadata for context reconstruction
- */
-export interface ChunkMetadata {
-  pageNumber?: number;
-  sectionTitle?: string;
-  documentName?: string;
-  documentType?: string;
-  startChar?: number;
-  endChar?: number;
-}
 
 /**
  * Retrieved chunk with similarity score
@@ -35,7 +14,6 @@ export interface RetrievedChunk {
   documentName: string;
   content: string;
   similarity: number;
-  metadata?: ChunkMetadata;
 }
 
 /**
@@ -62,26 +40,6 @@ export interface DocumentContext {
   }>;
   totalChunks: number;
   truncated: boolean;
-}
-
-/**
- * Embedding provider configuration
- */
-export interface EmbeddingProviderConfig {
-  provider: 'openai' | 'local';
-  model?: string;
-  apiKey?: string;
-  baseUrl?: string;
-  dimensions?: number;
-}
-
-/**
- * Chunking configuration
- */
-export interface ChunkingConfig {
-  chunkSize?: number; // Target tokens per chunk (default: 512)
-  chunkOverlap?: number; // Overlap tokens (default: 50)
-  minChunkSize?: number; // Minimum chunk size (default: 100)
 }
 
 /**

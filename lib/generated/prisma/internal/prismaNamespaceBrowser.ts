@@ -54,7 +54,6 @@ export const ModelName = {
   CourseMember: 'CourseMember',
   Classroom: 'Classroom',
   Document: 'Document',
-  DocumentChunk: 'DocumentChunk',
   InvitationCode: 'InvitationCode',
 } as const;
 
@@ -104,6 +103,7 @@ export const CourseScalarFieldEnum = {
   creatorId: 'creatorId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  ragflowDatasetId: 'ragflowDatasetId',
 } as const;
 
 export type CourseScalarFieldEnum =
@@ -147,23 +147,12 @@ export const DocumentScalarFieldEnum = {
   storagePath: 'storagePath',
   indexStatus: 'indexStatus',
   indexError: 'indexError',
+  ragflowDocumentId: 'ragflowDocumentId',
   createdAt: 'createdAt',
 } as const;
 
 export type DocumentScalarFieldEnum =
   (typeof DocumentScalarFieldEnum)[keyof typeof DocumentScalarFieldEnum];
-
-export const DocumentChunkScalarFieldEnum = {
-  id: 'id',
-  documentId: 'documentId',
-  content: 'content',
-  chunkIndex: 'chunkIndex',
-  metadata: 'metadata',
-  createdAt: 'createdAt',
-} as const;
-
-export type DocumentChunkScalarFieldEnum =
-  (typeof DocumentChunkScalarFieldEnum)[keyof typeof DocumentChunkScalarFieldEnum];
 
 export const InvitationCodeScalarFieldEnum = {
   id: 'id',
@@ -187,14 +176,6 @@ export const SortOrder = {
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder];
 
-export const NullableJsonNullValueInput = {
-  DbNull: DbNull,
-  JsonNull: JsonNull,
-} as const;
-
-export type NullableJsonNullValueInput =
-  (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput];
-
 export const QueryMode = {
   default: 'default',
   insensitive: 'insensitive',
@@ -208,11 +189,3 @@ export const NullsOrder = {
 } as const;
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder];
-
-export const JsonNullValueFilter = {
-  DbNull: DbNull,
-  JsonNull: JsonNull,
-  AnyNull: AnyNull,
-} as const;
-
-export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter];
