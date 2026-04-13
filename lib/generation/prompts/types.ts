@@ -7,7 +7,9 @@
  */
 export type PromptId =
   | 'requirement-analysis'
+  | 'requirement-analysis-judge'
   | 'requirements-to-outlines'
+  | 'outline-judge'
   | 'web-search-query-rewrite'
   | 'slide-content'
   | 'quiz-content'
