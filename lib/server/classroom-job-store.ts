@@ -11,6 +11,7 @@ import {
   ensureClassroomJobsDir,
   writeJsonFileAtomic,
 } from '@/lib/server/classroom-storage';
+import type { AgentActivityNode } from '@/lib/generation/agent/types';
 
 export type ClassroomGenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -39,6 +40,17 @@ export interface ClassroomGenerationJob {
     scenesCount: number;
   };
   error?: string;
+  /**
+   * Per-subagent checkpoints emitted by the generation orchestrator.
+   * Keyed by `nodeId`; populated only when the agent pipeline is enabled.
+   * Readers that predate Phase A will see this as `undefined` and ignore it.
+   */
+  checkpoints?: Record<string, { subagentId: string; completedAt: string; key: string }>;
+  /**
+   * Snapshot of the agent activity tree at the time of the last update.
+   * Used by reconnecting SSE clients to hydrate the UI.
+   */
+  agentTree?: AgentActivityNode[];
 }
 
 function jobFilePath(jobId: string) {
