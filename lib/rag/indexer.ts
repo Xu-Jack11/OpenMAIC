@@ -13,6 +13,8 @@ import path from 'path';
 import { prisma } from '@/lib/server/db';
 import { createLogger } from '@/lib/logger';
 import * as ragflow from './ragflow-client';
+import type { RagflowDocStatus } from './ragflow-client';
+import { evaluateIndexingOutcome, isPartialSuccess } from './indexing-outcome';
 import type { IndexingResult } from './types';
 
 const log = createLogger('RAG:Indexer');
@@ -69,13 +71,14 @@ async function ensureDataset(courseId: string, courseName: string): Promise<stri
 }
 
 /**
- * Poll RAGFlow until a document's parsing is complete or timed out.
- * Returns the final run status.
+ * Poll RAGFlow until a document's parsing terminates (DONE / FAIL / CANCEL)
+ * or the timeout fires. Returns the last status so the caller can apply the
+ * partial-success threshold.
  */
 async function pollParsingStatus(
   datasetId: string,
   ragflowDocId: string,
-): Promise<'DONE' | 'FAIL'> {
+): Promise<RagflowDocStatus> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   let interval = POLL_INITIAL_INTERVAL_MS;
 
@@ -84,10 +87,9 @@ async function pollParsingStatus(
 
     const status = await ragflow.getDocumentStatus(datasetId, ragflowDocId);
 
-    if (status.run === 'DONE') return 'DONE';
-    if (status.run === 'FAIL') return 'FAIL';
-    // CANCEL is treated as failure
-    if (status.run === 'CANCEL') return 'FAIL';
+    if (status.run === 'DONE' || status.run === 'FAIL' || status.run === 'CANCEL') {
+      return status;
+    }
 
     // Back off gradually
     interval = Math.min(interval + 500, POLL_MAX_INTERVAL_MS);
@@ -163,25 +165,26 @@ export async function indexDocument(documentId: string): Promise<IndexingResult>
     await ragflow.startParsing(datasetId, [ragflowDocId]);
 
     // 6. Poll for completion
-    const finalStatus = await pollParsingStatus(datasetId, ragflowDocId);
+    const status = await pollParsingStatus(datasetId, ragflowDocId);
+    const outcome = evaluateIndexingOutcome(status);
 
-    if (finalStatus === 'DONE') {
-      await prisma.document.update({
-        where: { id: documentId },
-        data: { indexStatus: 'indexed', indexError: null },
-      });
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { indexStatus: outcome.indexStatus, indexError: outcome.indexError },
+    });
 
-      log.info(`Successfully indexed document: ${documentId}`);
-      return { documentId, status: 'indexed', chunksCreated: 0 };
-    } else {
-      const errorMsg = 'RAGFlow parsing failed';
-      await prisma.document.update({
-        where: { id: documentId },
-        data: { indexStatus: 'failed', indexError: errorMsg },
-      });
-
-      return { documentId, status: 'failed', chunksCreated: 0, error: errorMsg };
+    if (outcome.indexStatus === 'indexed') {
+      log.info(
+        `Indexed document ${documentId}${isPartialSuccess(outcome) ? ' (partial success)' : ''}: chunks=${outcome.chunksCreated}`,
+      );
+      return { documentId, status: 'indexed', chunksCreated: outcome.chunksCreated };
     }
+    return {
+      documentId,
+      status: 'failed',
+      chunksCreated: outcome.chunksCreated,
+      error: outcome.indexError ?? 'RAGFlow parsing failed',
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     log.error(`Failed to index document ${documentId}:`, error);

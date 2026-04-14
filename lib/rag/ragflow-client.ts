@@ -22,6 +22,12 @@ export interface RagflowDocStatus {
   id: string;
   name: string;
   run: 'UNSTART' | 'RUNNING' | 'CANCEL' | 'DONE' | 'FAIL';
+  /** Number of chunks successfully produced so far. */
+  chunkCount: number;
+  /** Overall parsing progress, 0-1. */
+  progress: number;
+  /** Human-readable progress/failure message from RAGFlow. */
+  progressMsg?: string;
 }
 
 export interface RagflowRetrievalParams {
@@ -280,7 +286,7 @@ export async function getDocumentStatus(
   datasetId: string,
   documentId: string,
 ): Promise<RagflowDocStatus> {
-  const data = await request<{ docs: RagflowDocStatus[]; total: number }>(
+  const data = await request<{ docs: RagflowDocStatusRaw[]; total: number }>(
     'GET',
     `/datasets/${datasetId}/documents?id=${documentId}`,
   );
@@ -290,7 +296,7 @@ export async function getDocumentStatus(
     throw new Error(`Document ${documentId} not found in dataset ${datasetId}`);
   }
 
-  return docs[0];
+  return mapRawDocStatus(docs[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -371,5 +377,22 @@ function mapRawChunk(raw: RagflowRetrievalChunkRaw): RagflowChunk {
     positions: raw.positions,
     imageId: raw.image_id,
     importantKeywords: raw.important_keywords,
+  };
+}
+
+type RagflowDocStatusRaw = Omit<RagflowDocStatus, 'chunkCount' | 'progress' | 'progressMsg'> & {
+  chunk_count?: number;
+  progress?: number;
+  progress_msg?: string;
+};
+
+function mapRawDocStatus(raw: RagflowDocStatusRaw): RagflowDocStatus {
+  return {
+    id: raw.id,
+    name: raw.name,
+    run: raw.run,
+    chunkCount: typeof raw.chunk_count === 'number' ? raw.chunk_count : 0,
+    progress: typeof raw.progress === 'number' ? raw.progress : 0,
+    progressMsg: raw.progress_msg,
   };
 }
