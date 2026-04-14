@@ -77,6 +77,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ jobId: 
       }, HEARTBEAT_INTERVAL_MS);
 
       const cleanup = () => {
+        abort.removeEventListener('abort', cleanup);
         clearInterval(heartbeat);
         unsubscribe();
         closeOnce();

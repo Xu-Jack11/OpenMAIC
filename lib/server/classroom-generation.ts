@@ -743,12 +743,16 @@ async function generateClassroomWithAgent(
   log.info(`[agent] Classroom persisted: ${persisted.id}, URL: ${persisted.url}`);
 
   if (options.jobId) {
-    generationAgentEventHub.publish(options.jobId, {
+    const { jobId } = options;
+    generationAgentEventHub.publish(jobId, {
       type: 'classroom.done',
       classroomId: persisted.id,
       url: persisted.url,
       scenesCount: scenes.length,
     });
+    // Grace window for late SSE reconnects to replay the terminal event
+    // before the channel is torn down.
+    setTimeout(() => generationAgentEventHub.close(jobId), 60_000).unref?.();
   }
 
   await options.onProgress?.({

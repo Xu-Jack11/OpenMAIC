@@ -27,6 +27,7 @@ import type { SceneOutline } from '@/lib/types/generation';
 import type { AgentActivityNode, SubagentContext, SubagentDefinition } from './types';
 import type { GenerationAgentEvent } from './events';
 import { stampEvent } from './events';
+import { applyEventToNode, nodeFromStartedEvent } from './node-reducer';
 import {
   mediaGeneratorSubagent,
   outlineGeneratorSubagent,
@@ -73,6 +74,8 @@ export type OrchestratorEventListener = (event: GenerationAgentEvent) => void;
 
 /**
  * Activity tree: mutable map of nodes keyed by id, plus event broadcasting.
+ * Node mutations share the same reducer as the client-side Zustand store so
+ * both views cannot diverge.
  */
 class ActivityTree {
   private readonly nodes = new Map<string, AgentActivityNode>();
@@ -104,12 +107,6 @@ class ActivityTree {
     }
   }
 
-  updateNode(id: string, patch: Partial<AgentActivityNode>): void {
-    const current = this.nodes.get(id);
-    if (!current) return;
-    this.nodes.set(id, { ...current, ...patch });
-  }
-
   snapshot(): AgentActivityNode[] {
     return Array.from(this.nodes.values()).map((n) => ({
       ...n,
@@ -119,38 +116,11 @@ class ActivityTree {
   }
 
   private applyEventToTree(event: GenerationAgentEvent): void {
-    switch (event.type) {
-      case 'agent.tool_call': {
-        const node = this.nodes.get(event.nodeId);
-        if (!node) return;
-        node.toolCalls.push({
-          id: event.toolCallId,
-          name: event.toolName,
-          status: 'running',
-          argsPreview: event.argsPreview,
-        });
-        return;
-      }
-      case 'agent.tool_result': {
-        const node = this.nodes.get(event.nodeId);
-        if (!node) return;
-        const call = node.toolCalls.find((t) => t.id === event.toolCallId);
-        if (call) {
-          call.status = event.ok ? 'succeeded' : 'failed';
-          call.resultSummary = event.summary;
-        }
-        return;
-      }
-      case 'agent.text_delta': {
-        const node = this.nodes.get(event.nodeId);
-        if (!node) return;
-        const next = (node.textPreview ?? '') + event.delta;
-        node.textPreview = next.length > 500 ? next.slice(-500) : next;
-        return;
-      }
-      default:
-        return;
-    }
+    if (!('nodeId' in event) || !event.nodeId) return;
+    const current = this.nodes.get(event.nodeId);
+    if (!current) return;
+    const next = applyEventToNode(current, event);
+    if (next !== current) this.nodes.set(event.nodeId, next);
   }
 }
 
@@ -175,26 +145,16 @@ async function runSubagent<I, O>(
     throw new Error(`Subagent ${def.id} input validation failed: ${parsedInput.error.message}`);
   }
 
-  tree.addNode({
-    id: nodeId,
-    parentId,
-    subagentId: def.id,
-    label,
-    status: 'running',
-    startedAt: Date.now(),
-    children: [],
-    toolCalls: [],
-    inputSummary,
-  });
-
-  tree.emit({
-    type: 'agent.started',
+  const startedEvent = {
+    type: 'agent.started' as const,
     nodeId,
     parentId,
     subagentId: def.id,
     label,
     inputSummary,
-  });
+  };
+  tree.addNode(nodeFromStartedEvent(startedEvent));
+  tree.emit(startedEvent);
 
   const ctx: SubagentContext = {
     ...ctxBase,
@@ -231,22 +191,12 @@ async function runSubagent<I, O>(
     }
 
     const outputSummary = summarizeOutput(def.id, parsedOutput.data as unknown);
-    tree.updateNode(nodeId, {
-      status: 'succeeded',
-      completedAt: Date.now(),
-      outputSummary,
-    });
     tree.emit({ type: 'agent.completed', nodeId, outputSummary });
     tree.emit({ type: 'agent.checkpoint', nodeId, key: def.id });
 
     return parsedOutput.data as O;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    tree.updateNode(nodeId, {
-      status: 'failed',
-      completedAt: Date.now(),
-      error: message,
-    });
     tree.emit({ type: 'agent.failed', nodeId, error: message, retryable: false });
     throw err;
   } finally {
@@ -469,10 +419,9 @@ export async function runGenerationAgent(
 
   return {
     outlines,
-    scenes: input.stageApi.scene.list().data ?? [],
+    scenes,
     agentTree: tree.snapshot(),
   };
 }
 
 export type { AgentActivityNode } from './types';
-export { BUILTIN_SUBAGENTS, type BuiltinSubagentId } from './subagents';
