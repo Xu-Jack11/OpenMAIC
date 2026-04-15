@@ -35,6 +35,7 @@ import type { Scene, Stage } from '@/lib/types/stage';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
 import { runGenerationAgent } from '@/lib/generation/agent/orchestrator';
 import { generationAgentEventHub } from '@/lib/generation/agent/event-hub';
+import { isAgentOrchestratorEnabled } from '@/lib/generation/agent/config';
 
 const log = createLogger('Classroom');
 
@@ -168,20 +169,8 @@ Return a JSON object with this exact structure:
   }));
 }
 
-/**
- * Feature flag: route classroom generation through the new agent
- * orchestrator. Defaults OFF — existing behavior unchanged.
- *
- * Supported values:
- *  - `phase-a`   Deterministic planner (subagent wrappers, same ordering as
- *                the legacy pipeline).
- *  - `tool_use`  LLM planner (Anthropic tool_use drives the subagent
- *                dispatch order).
- */
-function isAgentOrchestratorEnabled(): boolean {
-  const mode = process.env.GENERATION_AGENT_MODE;
-  return mode === 'phase-a' || mode === 'tool_use';
-}
+// Feature-flag reading is centralized in `lib/generation/agent/config.ts` so
+// the dispatcher in the orchestrator and this call site can't drift.
 
 export async function generateClassroom(
   input: GenerateClassroomInput,

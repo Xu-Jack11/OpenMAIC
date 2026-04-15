@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  BUILTIN_TOOL_NAMES,
   buildTools,
   createInitialPlannerState,
   type PlannerState,
@@ -263,12 +264,18 @@ describe('LLM planner tools — preconditions', () => {
   });
 
   describe('finish', () => {
-    it('sets finished=true and stores the reason', async () => {
+    it('sets finished=true', async () => {
       const { tools, state } = makeTools();
       const result = (await invoke(tools.finish, { reason: 'done' })) as { ok: boolean };
       expect(result.ok).toBe(true);
       expect(state.finished).toBe(true);
-      expect(state.finishReason).toBe('done');
+    });
+  });
+
+  describe('tool set shape', () => {
+    it('exposes exactly the declared BUILTIN_TOOL_NAMES', () => {
+      const { tools } = makeTools();
+      expect(Object.keys(tools).sort()).toEqual([...BUILTIN_TOOL_NAMES].sort());
     });
   });
 });

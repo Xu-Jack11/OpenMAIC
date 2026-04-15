@@ -19,8 +19,23 @@ import type { AgentActivityNode, SubagentContext, SubagentDefinition } from './t
 import type { GenerationAgentEvent } from './events';
 import { stampEvent } from './events';
 import { applyEventToNode, nodeFromStartedEvent } from './node-reducer';
+import {
+  sceneActionGeneratorSubagent,
+  sceneComposerSubagent,
+  sceneContentGeneratorSubagent,
+} from './subagents';
 
 const log = createLogger('GenerationAgent:Runtime');
+
+/**
+ * Stable step identifiers emitted on `agent.progress` events. Kept narrow so
+ * the legacy `onProgress` bridge in classroom-generation.ts can map them to
+ * `ClassroomGenerationStep` values without a cast table.
+ */
+export const GENERATION_STEPS = {
+  GENERATING_OUTLINES: 'generating_outlines',
+  GENERATING_SCENES: 'generating_scenes',
+} as const;
 
 export interface OrchestratorInput {
   requirement: string;
@@ -239,4 +254,59 @@ export async function runPool<T>(limit: number, tasks: Array<() => Promise<T>>):
   for (let w = 0; w < Math.min(limit, tasks.length); w++) workers.push(worker());
   await Promise.all(workers);
   return results;
+}
+
+/**
+ * Runs the three-step per-scene pipeline (content → actions → compose) shared
+ * by both planners. Returns `null` if content generation failed so the caller
+ * can decide whether to skip or error.
+ */
+export async function runSceneGeneration(
+  tree: ActivityTree,
+  safeOutline: SceneOutline,
+  agents: AgentInfo[],
+  ctxBase: SubagentContextBase,
+  labelPrefix: string,
+): Promise<{ sceneId: string | null } | null> {
+  const content = await runSubagent(
+    tree,
+    sceneContentGeneratorSubagent,
+    { outline: safeOutline, agents },
+    ctxBase,
+    null,
+    `${labelPrefix}: ${safeOutline.title}`,
+  );
+  if (!content) return null;
+
+  const { actions } = await runSubagent(
+    tree,
+    sceneActionGeneratorSubagent,
+    { outline: safeOutline, content, agents },
+    ctxBase,
+    null,
+    `Actions: ${safeOutline.title}`,
+  );
+
+  const { sceneId } = await runSubagent(
+    tree,
+    sceneComposerSubagent,
+    { outline: safeOutline, content, actions },
+    ctxBase,
+    null,
+    `Compose: ${safeOutline.title}`,
+  );
+
+  return { sceneId };
+}
+
+/**
+ * Counts successfully-composed scenes by scanning the activity tree. Replaces
+ * a separate `completedOutlineIndices` Set maintained out-of-band by planners.
+ */
+export function countCompletedScenes(tree: ActivityTree): number {
+  let count = 0;
+  for (const node of tree.snapshot()) {
+    if (node.subagentId === 'scene-composer' && node.status === 'succeeded') count++;
+  }
+  return count;
 }

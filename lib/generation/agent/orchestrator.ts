@@ -20,6 +20,7 @@ import {
 } from './runtime';
 import { runDeterministicPlanner } from './deterministic-planner';
 import { runLLMPlanner } from './llm-planner';
+import { getGenerationAgentMode } from './config';
 
 const log = createLogger('GenerationAgent:Orchestrator');
 
@@ -27,7 +28,7 @@ const log = createLogger('GenerationAgent:Orchestrator');
 export type PlannerMode = 'deterministic' | 'tool_use';
 
 export function resolvePlannerMode(): PlannerMode {
-  return process.env.GENERATION_AGENT_MODE === 'tool_use' ? 'tool_use' : 'deterministic';
+  return getGenerationAgentMode() === 'tool_use' ? 'tool_use' : 'deterministic';
 }
 
 export async function runGenerationAgent(

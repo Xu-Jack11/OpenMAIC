@@ -32,15 +32,14 @@ import {
   outlineGeneratorSubagent,
   ragRetrieverSubagent,
   requirementAnalyzerSubagent,
-  sceneActionGeneratorSubagent,
-  sceneComposerSubagent,
-  sceneContentGeneratorSubagent,
   ttsGeneratorSubagent,
   webResearcherSubagent,
 } from './subagents';
 import {
   ActivityTree,
+  GENERATION_STEPS,
   buildCtxBase,
+  runSceneGeneration,
   runSubagent,
   type OrchestratorInput,
   type OrchestratorOutput,
@@ -56,11 +55,15 @@ export interface PlannerState {
   researchContext?: string;
   documentContext?: string;
   outlines?: SceneOutline[];
+  /**
+   * Which outline indices have successfully committed a scene. Indexed by
+   * outline position (not by tree order) so re-calls on the same index can
+   * be detected cheaply.
+   */
   completedOutlineIndices: Set<number>;
   mediaGenerated: boolean;
   ttsGenerated: boolean;
   finished: boolean;
-  finishReason?: string;
 }
 
 /** Fresh state for a single planner run. Exported for tests. */
@@ -102,7 +105,7 @@ Follow this order. Skip optional steps only if the corresponding flag is off.
 2. \`analyze_requirement\` — call exactly once before generating outlines.
 3. (Optional) \`retrieve_rag\` — call at most once if courseId is present.
 4. \`generate_outlines\` — call exactly once. After this, \`outlineCount\` is known.
-5. \`generate_scene\` — call once per outline, from index 0 up to outlineCount - 1. The order must be ascending.
+5. \`generate_scene\` — call once per outline, from index 0 up to outlineCount - 1. The order must be ascending. When multiple scenes are ready, you may emit several \`generate_scene\` tool_use blocks in the same step (each with a distinct \`outline_index\`) to run them in parallel; the runtime serializes writes safely.
 6. (Optional) \`generate_media\` — call at most once if enableMedia is true, after all scenes are generated.
 7. (Optional) \`generate_tts\` — call at most once if enableTTS is true, after all scenes are generated.
 8. \`finish\` — call exactly once, last, to terminate. Tool calls after finish are ignored.
@@ -113,17 +116,6 @@ Follow this order. Skip optional steps only if the corresponding flag is off.
 - Do not call the same tool twice unless the description explicitly says "once per outline".
 - Keep your reasoning text short. Prefer making the next tool call over narrating.
 - Always end with \`finish\`.`;
-}
-
-/**
- * Lazy helper: run a subagent and return its result, or throw an error that
- * will be surfaced to the planner as a tool error (not a hard failure).
- */
-class ToolPreconditionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ToolPreconditionError';
-  }
 }
 
 export interface ToolBuildContext {
@@ -180,7 +172,7 @@ export function buildTools(toolCtx: ToolBuildContext) {
       inputSchema: z.object({}),
       execute: async () => {
         if (state.analysis !== undefined) {
-          throw new ToolPreconditionError('analyze_requirement has already been called.');
+          throw new Error('analyze_requirement has already been called.');
         }
         state.analysis = await runSubagent(
           tree,
@@ -220,9 +212,7 @@ export function buildTools(toolCtx: ToolBuildContext) {
           return { skipped: true, reason: 'No courseId on this run; RAG is unavailable.' };
         }
         if (state.analysis === undefined) {
-          throw new ToolPreconditionError(
-            'analyze_requirement must be called before retrieve_rag.',
-          );
+          throw new Error('analyze_requirement must be called before retrieve_rag.');
         }
         if (state.documentContext !== undefined) {
           return { skipped: true, reason: 'retrieve_rag has already been called.' };
@@ -260,12 +250,10 @@ export function buildTools(toolCtx: ToolBuildContext) {
       inputSchema: z.object({}),
       execute: async () => {
         if (state.analysis === undefined) {
-          throw new ToolPreconditionError(
-            'analyze_requirement must be called before generate_outlines.',
-          );
+          throw new Error('analyze_requirement must be called before generate_outlines.');
         }
         if (state.outlines) {
-          throw new ToolPreconditionError('generate_outlines has already been called.');
+          throw new Error('generate_outlines has already been called.');
         }
         const { outlines } = await runSubagent(
           tree,
@@ -288,7 +276,7 @@ export function buildTools(toolCtx: ToolBuildContext) {
           type: 'agent.progress',
           pct: 30,
           message: `Generated ${outlines.length} scene outlines`,
-          step: 'generating_outlines',
+          step: GENERATION_STEPS.GENERATING_OUTLINES,
           scenesGenerated: 0,
           totalScenes: outlines.length,
         });
@@ -308,10 +296,10 @@ export function buildTools(toolCtx: ToolBuildContext) {
       }),
       execute: async ({ outline_index }) => {
         if (!state.outlines) {
-          throw new ToolPreconditionError('generate_outlines must be called first.');
+          throw new Error('generate_outlines must be called first.');
         }
         if (outline_index < 0 || outline_index >= state.outlines.length) {
-          throw new ToolPreconditionError(
+          throw new Error(
             `outline_index ${outline_index} out of range [0, ${state.outlines.length - 1}]`,
           );
         }
@@ -320,35 +308,16 @@ export function buildTools(toolCtx: ToolBuildContext) {
         }
 
         const safeOutline = applyOutlineFallbacks(state.outlines[outline_index], true);
-        const title = safeOutline.title;
-
-        const content = await runSubagent(
+        const result = await runSceneGeneration(
           tree,
-          sceneContentGeneratorSubagent,
-          { outline: safeOutline, agents: input.agents },
+          safeOutline,
+          input.agents,
           ctxBase,
-          null,
-          `Scene ${outline_index + 1}: ${title}`,
+          `Scene ${outline_index + 1}`,
         );
-        if (!content) {
+        if (!result) {
           return { ok: false, reason: 'content generation returned null' };
         }
-        const { actions } = await runSubagent(
-          tree,
-          sceneActionGeneratorSubagent,
-          { outline: safeOutline, content, agents: input.agents },
-          ctxBase,
-          null,
-          `Actions: ${title}`,
-        );
-        const { sceneId } = await runSubagent(
-          tree,
-          sceneComposerSubagent,
-          { outline: safeOutline, content, actions },
-          ctxBase,
-          null,
-          `Compose: ${title}`,
-        );
 
         state.completedOutlineIndices.add(outline_index);
         const completed = state.completedOutlineIndices.size;
@@ -357,12 +326,12 @@ export function buildTools(toolCtx: ToolBuildContext) {
           type: 'agent.progress',
           pct: 30 + Math.floor((completed / total) * 60),
           message: `Scene ${completed}/${total}`,
-          step: 'generating_scenes',
+          step: GENERATION_STEPS.GENERATING_SCENES,
           scenesGenerated: (input.stageApi.scene.list().data ?? []).length,
           totalScenes: total,
         });
 
-        return { ok: true, sceneId: sceneId ?? null, scenesCompleted: completed, total };
+        return { ok: true, sceneId: result.sceneId ?? null, scenesCompleted: completed, total };
       },
     }),
 
@@ -372,12 +341,10 @@ export function buildTools(toolCtx: ToolBuildContext) {
       inputSchema: z.object({}),
       execute: async () => {
         if (!state.outlines) {
-          throw new ToolPreconditionError('generate_outlines must be called first.');
+          throw new Error('generate_outlines must be called first.');
         }
         if (state.completedOutlineIndices.size !== state.outlines.length) {
-          throw new ToolPreconditionError(
-            'Not all scenes are generated yet; finish generate_scene calls first.',
-          );
+          throw new Error('Not all scenes are generated yet; finish generate_scene calls first.');
         }
         if (!input.enableImageGeneration && !input.enableVideoGeneration) {
           return { skipped: true, reason: 'Media generation is disabled for this run.' };
@@ -403,12 +370,10 @@ export function buildTools(toolCtx: ToolBuildContext) {
       inputSchema: z.object({}),
       execute: async () => {
         if (!state.outlines) {
-          throw new ToolPreconditionError('generate_outlines must be called first.');
+          throw new Error('generate_outlines must be called first.');
         }
         if (state.completedOutlineIndices.size !== state.outlines.length) {
-          throw new ToolPreconditionError(
-            'Not all scenes are generated yet; finish generate_scene calls first.',
-          );
+          throw new Error('Not all scenes are generated yet; finish generate_scene calls first.');
         }
         if (!input.enableTTS) {
           return { skipped: true, reason: 'TTS is disabled for this run.' };
@@ -440,7 +405,7 @@ export function buildTools(toolCtx: ToolBuildContext) {
       }),
       execute: async ({ reason }) => {
         state.finished = true;
-        state.finishReason = reason;
+        if (reason) log.info(`planner finish: ${reason}`);
         return { ok: true };
       },
     }),
@@ -503,3 +468,19 @@ export async function runLLMPlanner(
     agentTree: tree.snapshot(),
   };
 }
+
+/**
+ * Names of every tool exposed to the planner. Exported so tests can assert
+ * the tool set hasn't drifted without touching every precondition test.
+ */
+export const BUILTIN_TOOL_NAMES = [
+  'research_web',
+  'analyze_requirement',
+  'retrieve_rag',
+  'generate_outlines',
+  'generate_scene',
+  'generate_media',
+  'generate_tts',
+  'finish',
+] as const;
+export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];

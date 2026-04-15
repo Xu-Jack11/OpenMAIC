@@ -13,16 +13,15 @@ import {
   outlineGeneratorSubagent,
   ragRetrieverSubagent,
   requirementAnalyzerSubagent,
-  sceneActionGeneratorSubagent,
-  sceneComposerSubagent,
-  sceneContentGeneratorSubagent,
   ttsGeneratorSubagent,
   webResearcherSubagent,
 } from './subagents';
 import {
   ActivityTree,
+  GENERATION_STEPS,
   buildCtxBase,
   runPool,
+  runSceneGeneration,
   runSubagent,
   type OrchestratorInput,
   type OrchestratorOutput,
@@ -117,7 +116,7 @@ export async function runDeterministicPlanner(
     type: 'agent.progress',
     pct: 30,
     message: `Generated ${outlines.length} scene outlines`,
-    step: 'generating_outlines',
+    step: GENERATION_STEPS.GENERATING_OUTLINES,
     scenesGenerated: 0,
     totalScenes: outlines.length,
   });
@@ -125,44 +124,23 @@ export async function runDeterministicPlanner(
   // 5. Stage 2: per-outline content → actions → compose (concurrent)
   const sceneTasks = outlines.map((rawOutline, index) => async () => {
     const safeOutline = applyOutlineFallbacks(rawOutline, true);
-
-    const content = await runSubagent(
+    const result = await runSceneGeneration(
       tree,
-      sceneContentGeneratorSubagent,
-      { outline: safeOutline, agents: input.agents },
+      safeOutline,
+      input.agents,
       ctxBase,
-      null,
-      `Scene ${index + 1}: ${safeOutline.title}`,
+      `Scene ${index + 1}`,
     );
-
-    if (!content) {
+    if (!result) {
       log.warn(`Scene "${safeOutline.title}" content failed; skipping`);
       return;
     }
-
-    const { actions } = await runSubagent(
-      tree,
-      sceneActionGeneratorSubagent,
-      { outline: safeOutline, content, agents: input.agents },
-      ctxBase,
-      null,
-      `Actions: ${safeOutline.title}`,
-    );
-
-    await runSubagent(
-      tree,
-      sceneComposerSubagent,
-      { outline: safeOutline, content, actions },
-      ctxBase,
-      null,
-      `Compose: ${safeOutline.title}`,
-    );
 
     tree.emit({
       type: 'agent.progress',
       pct: 30 + Math.floor(((index + 1) / outlines.length) * 60),
       message: `Scene ${index + 1}/${outlines.length}`,
-      step: 'generating_scenes',
+      step: GENERATION_STEPS.GENERATING_SCENES,
       scenesGenerated: (input.stageApi.scene.list().data ?? []).length,
       totalScenes: outlines.length,
     });
