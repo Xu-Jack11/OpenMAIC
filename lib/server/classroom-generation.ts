@@ -169,13 +169,18 @@ Return a JSON object with this exact structure:
 }
 
 /**
- * Feature flag: route classroom generation through the new
- * Phase A agent orchestrator. Defaults OFF — existing behavior unchanged.
+ * Feature flag: route classroom generation through the new agent
+ * orchestrator. Defaults OFF — existing behavior unchanged.
  *
- * Enable by setting `GENERATION_AGENT_MODE=phase-a` in the environment.
+ * Supported values:
+ *  - `phase-a`   Deterministic planner (subagent wrappers, same ordering as
+ *                the legacy pipeline).
+ *  - `tool_use`  LLM planner (Anthropic tool_use drives the subagent
+ *                dispatch order).
  */
 function isAgentOrchestratorEnabled(): boolean {
-  return process.env.GENERATION_AGENT_MODE === 'phase-a';
+  const mode = process.env.GENERATION_AGENT_MODE;
+  return mode === 'phase-a' || mode === 'tool_use';
 }
 
 export async function generateClassroom(
@@ -691,6 +696,8 @@ async function generateClassroomWithAgent(
       language: lang,
       aiCall,
       lightweightAiCall,
+      languageModel,
+      maxOutputTokens: modelInfo?.outputWindow,
       baseUrl: options.baseUrl,
       agents,
       stageApi: api,
