@@ -5,14 +5,11 @@
  * `useAgentActivityStore`. Each node is an `AgentNodeCard` with recursive
  * children. The component connects to the SSE event stream via
  * `useAgentActivityStream` when a `jobId` is provided.
- *
- * Phase C integration: drop this component into the generation-preview page
- * (or any view that shows a classroom generation job). It replaces the old
- * 2-milestone `GeneratingProgress` card with a full activity tree.
  */
 
 'use client';
 
+import { memo, useMemo } from 'react';
 import { cn } from '@/lib/utils/cn';
 import {
   useAgentActivityStream,
@@ -25,89 +22,97 @@ import { AgentNodeCard } from './agent-node-card';
 import type { AgentActivityNode } from '@/lib/generation/agent/types';
 import { CheckCircle2Icon, Loader2Icon, RadioIcon, WifiOffIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { getClientTranslation } from '@/lib/i18n';
+import { useI18n } from '@/lib/hooks/use-i18n';
 
 export interface AgentActivityTreeProps {
-  /** Job ID to connect the SSE stream. Pass `null` to render without a live connection. */
   jobId: string | null;
-  /** Additional CSS classes on the root wrapper. */
   className?: string;
 }
 
-const STATUS_LABEL: Record<StreamStatus, { icon: ReactNode; label: string }> = {
-  idle: { icon: <RadioIcon className="size-3.5 text-muted-foreground" />, label: 'Idle' },
-  connecting: {
-    icon: <Loader2Icon className="size-3.5 animate-spin text-blue-500" />,
-    label: 'Connecting...',
-  },
-  open: {
-    icon: <Loader2Icon className="size-3.5 animate-spin text-blue-500" />,
-    label: '',
-  },
-  closed: {
-    icon: <CheckCircle2Icon className="size-3.5 text-green-600" />,
-    label: '',
-  },
-  error: {
-    icon: <WifiOffIcon className="size-3.5 text-red-600" />,
-    label: '',
-  },
-};
+function statusIcon(status: StreamStatus): ReactNode {
+  switch (status) {
+    case 'idle':
+      return <RadioIcon className="size-3.5 text-muted-foreground" />;
+    case 'connecting':
+    case 'open':
+      return <Loader2Icon className="size-3.5 animate-spin text-blue-500" />;
+    case 'closed':
+      return <CheckCircle2Icon className="size-3.5 text-green-600" />;
+    case 'error':
+      return <WifiOffIcon className="size-3.5 text-red-600" />;
+  }
+}
 
-function NodeRecursive({ node }: { node: AgentActivityNode }) {
+const NodeRecursive = memo(function NodeRecursive({ node }: { node: AgentActivityNode }) {
   const children = useAgentActivityStore((s) => selectChildren(s, node.id));
+  const childCount = children.length;
   return (
-    <AgentNodeCard node={node} defaultOpen={node.status === 'running' || children.length <= 4}>
+    <AgentNodeCard
+      node={node}
+      defaultOpen={node.status === 'running' || childCount <= 4}
+      childCount={childCount}
+    >
       {children.map((child) => (
         <NodeRecursive key={child.id} node={child} />
       ))}
     </AgentNodeCard>
   );
-}
+});
 
 export function AgentActivityTree({ jobId, className }: AgentActivityTreeProps) {
+  const { t } = useI18n();
   const { status } = useAgentActivityStream(jobId);
-  const { rootIds, nodes, classroomResult, hasActivity } = useAgentActivity();
+  const { nodes, rootIds, classroomResult } = useAgentActivity();
+  const hasActivity = rootIds.length > 0;
 
-  const statusInfo = STATUS_LABEL[status];
-
-  // Compute aggregate counts.
-  const allNodes = Object.values(nodes);
-  const runningCount = allNodes.filter((n) => n.status === 'running').length;
-  const succeededCount = allNodes.filter((n) => n.status === 'succeeded').length;
-  const failedCount = allNodes.filter((n) => n.status === 'failed').length;
+  // Single-pass aggregate counts.
+  const { running, succeeded, failed } = useMemo(() => {
+    let running = 0;
+    let succeeded = 0;
+    let failed = 0;
+    for (const n of Object.values(nodes)) {
+      if (n.status === 'running') running++;
+      else if (n.status === 'succeeded') succeeded++;
+      else if (n.status === 'failed') failed++;
+    }
+    return { running, succeeded, failed };
+  }, [nodes]);
 
   return (
     <div className={cn('w-full space-y-3', className)}>
       {/* Header bar */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        {statusInfo.icon}
+        {statusIcon(status)}
+        {status === 'connecting' && <span>{t('generation.generation.aiWorking')}...</span>}
         {status === 'open' && (
           <span>
-            {getClientTranslation('generation.generation.aiWorking')}{' '}
-            {runningCount > 0 && `(${runningCount} active)`}
+            {t('generation.generation.aiWorking')}{' '}
+            {running > 0 && `(${running} ${t('generation.generation.agentTreeActive')})`}
           </span>
         )}
         {status === 'closed' && classroomResult && (
           <span className="text-green-700">
-            {getClientTranslation('generation.generation.generationComplete')} —{' '}
-            {classroomResult.scenesCount} scenes
+            {t('generation.generation.generationComplete')} — {classroomResult.scenesCount}{' '}
+            {t('generation.generation.agentTreeScenes')}
           </span>
         )}
         {status === 'error' && (
-          <span className="text-red-600">
-            {getClientTranslation('generation.generation.generationFailed')}
-          </span>
+          <span className="text-red-600">{t('generation.generation.generationFailed')}</span>
         )}
-        {statusInfo.label && <span>{statusInfo.label}</span>}
 
         {/* Counters */}
         {hasActivity && (
           <span className="ml-auto tabular-nums">
-            {succeededCount > 0 && (
-              <span className="mr-2 text-green-700">{succeededCount} done</span>
+            {succeeded > 0 && (
+              <span className="mr-2 text-green-700">
+                {succeeded} {t('generation.generation.agentTreeDone')}
+              </span>
             )}
-            {failedCount > 0 && <span className="text-red-600">{failedCount} failed</span>}
+            {failed > 0 && (
+              <span className="text-red-600">
+                {failed} {t('generation.generation.agentTreeFailed')}
+              </span>
+            )}
           </span>
         )}
       </div>
@@ -124,7 +129,7 @@ export function AgentActivityTree({ jobId, className }: AgentActivityTreeProps) 
       ) : (
         status !== 'idle' && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            {getClientTranslation('generation.generation.aiWorking')}...
+            {t('generation.generation.aiWorking')}...
           </p>
         )
       )}

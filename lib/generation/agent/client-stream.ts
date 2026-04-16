@@ -98,11 +98,14 @@ export function useAgentActivityStream(jobId: string | null) {
 }
 
 /**
- * Convenience selector: subscribes to the full tree state for rendering.
+ * Convenience selector: subscribes to the tree state for rendering via a
+ * single shallow comparison so one store mutation triggers at most one
+ * re-render in the consuming component.
  */
 export function useAgentActivity() {
-  const nodes = useAgentActivityStore((s) => s.nodes);
-  const rootIds = useAgentActivityStore((s) => s.rootIds);
-  const classroomResult = useAgentActivityStore((s) => s.classroomResult);
-  return { nodes, rootIds, classroomResult, hasActivity: rootIds.length > 0 };
+  return useAgentActivityStore((s) => ({
+    nodes: s.nodes,
+    rootIds: s.rootIds,
+    classroomResult: s.classroomResult,
+  }));
 }

@@ -59,6 +59,11 @@ export const generationZhCN = {
     agentRevealTitle: '你的课堂角色',
     viewAgents: '查看角色',
     continue: '继续',
+    // Agent activity tree
+    agentTreeActive: '进行中',
+    agentTreeDone: '已完成',
+    agentTreeFailed: '失败',
+    agentTreeScenes: '个场景',
     // Outline errors
     outlineRetrying: '大纲生成异常，正在重试...',
     outlineEmptyResponse: '模型未返回有效的大纲内容，请检查模型配置后重试',
@@ -132,6 +137,11 @@ export const generationEnUS = {
     agentRevealTitle: 'Your Classroom Roles',
     viewAgents: 'View Roles',
     continue: 'Continue',
+    // Agent activity tree
+    agentTreeActive: 'active',
+    agentTreeDone: 'done',
+    agentTreeFailed: 'failed',
+    agentTreeScenes: 'scenes',
     // Outline errors
     outlineRetrying: 'Outline generation issue, retrying...',
     outlineEmptyResponse:

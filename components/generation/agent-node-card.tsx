@@ -26,6 +26,8 @@ export interface AgentNodeCardProps {
   node: AgentActivityNode;
   children?: ReactNode;
   defaultOpen?: boolean;
+  /** Number of child nodes; used to decide if the card is expandable. */
+  childCount?: number;
 }
 
 const STATUS_ICON: Record<AgentActivityNode['status'], ReactNode> = {
@@ -43,10 +45,14 @@ function formatDuration(startedAt?: number, completedAt?: number): string | null
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export function AgentNodeCard({ node, children, defaultOpen = true }: AgentNodeCardProps) {
-  const hasChildren = !!children;
+export function AgentNodeCard({
+  node,
+  children,
+  defaultOpen = true,
+  childCount = 0,
+}: AgentNodeCardProps) {
   const hasToolCalls = node.toolCalls.length > 0;
-  const isExpandable = hasChildren || hasToolCalls || !!node.textPreview || !!node.error;
+  const isExpandable = childCount > 0 || hasToolCalls || !!node.textPreview || !!node.error;
   const duration = formatDuration(node.startedAt, node.completedAt);
 
   const label =

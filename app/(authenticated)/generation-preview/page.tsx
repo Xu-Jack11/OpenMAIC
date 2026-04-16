@@ -31,6 +31,7 @@ import { createLogger } from '@/lib/logger';
 import { type GenerationSessionState, ALL_STEPS, getActiveSteps } from './types';
 import { StepVisualizer } from './components/visualizers';
 import { AgentActivityTree } from '@/components/generation/agent-activity-tree';
+import { useAgentActivityStore } from '@/lib/store/agent-activity';
 
 const log = createLogger('GenerationPreview');
 
@@ -1150,6 +1151,14 @@ function AgentGenerationView() {
   const router = useRouter();
   const { t } = useI18n();
   const jobId = searchParams.get('jobId');
+  const classroomResult = useAgentActivityStore((s) => s.classroomResult);
+
+  // Redirect to the classroom when generation finishes.
+  useEffect(() => {
+    if (classroomResult?.url) {
+      router.push(classroomResult.url);
+    }
+  }, [classroomResult?.url, router]);
 
   return (
     <div className="flex min-h-[100dvh] w-full flex-col items-center bg-gradient-to-b from-slate-50 to-slate-100 px-4 py-12 dark:from-slate-950 dark:to-slate-900">
