@@ -15,12 +15,18 @@ interface SkillRequest {
   promptId: string;
   variables: Record<string, string>;
   responseKey: string;
+  /**
+   * Optional schema id from the manifest's `generation.outputSchema`. Takes
+   * precedence over the implicit `skillId` lookup when both are present —
+   * lets user YAML skills opt into a built-in schema.
+   */
+  outputSchema?: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as SkillRequest;
-    const { skillId, promptId, variables, responseKey } = body;
+    const { skillId, promptId, variables, responseKey, outputSchema } = body;
 
     if (!skillId || !promptId || !variables) {
       return apiError(
@@ -56,9 +62,11 @@ export async function POST(req: NextRequest) {
     const rawOutput = responseKey && parsed[responseKey] ? parsed[responseKey] : parsed;
 
     // Phase D — validate against the skill's Zod schema when one is registered.
-    // Built-in skills (handout / experiment / reading) have schemas; user YAML
-    // skills and unknown skillIds fall through unchanged.
-    const schema = getPluginOutputSchema(skillId);
+    // Resolution order: explicit `outputSchema` from the manifest, then the
+    // implicit `skillId` lookup (built-in plugins). Either can match; user
+    // YAML skills and unknown ids fall through unchanged.
+    const schema =
+      (outputSchema && getPluginOutputSchema(outputSchema)) || getPluginOutputSchema(skillId);
     if (schema) {
       const validated = schema.safeParse(rawOutput);
       if (!validated.success) {

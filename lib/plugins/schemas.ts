@@ -15,17 +15,20 @@
 
 import { z } from 'zod';
 
+/** Reusable fragment: a required non-empty string. */
+const nonEmptyString = z.string().min(1);
+
 // ----- Handout --------------------------------------------------------------
 
 const handoutSectionSchema = z.object({
   type: z.enum(['slide', 'quiz', 'interactive', 'pbl']),
-  title: z.string().min(1),
+  title: nonEmptyString,
   keyPoints: z.array(z.string()).default([]),
   notes: z.string().default(''),
   questions: z
     .array(
       z.object({
-        question: z.string().min(1),
+        question: nonEmptyString,
         options: z.array(z.string()).optional(),
         answer: z.string().optional(),
         analysis: z.string().optional(),
@@ -35,7 +38,7 @@ const handoutSectionSchema = z.object({
 });
 
 export const handoutOutputSchema = z.object({
-  title: z.string().min(1),
+  title: nonEmptyString,
   overview: z.string().default(''),
   sections: z.array(handoutSectionSchema).min(1),
   summary: z.string().default(''),
@@ -44,22 +47,22 @@ export const handoutOutputSchema = z.object({
 // ----- Experiment design ----------------------------------------------------
 
 const experimentMaterialSchema = z.object({
-  name: z.string().min(1),
-  quantity: z.string().min(1),
+  name: nonEmptyString,
+  quantity: nonEmptyString,
   notes: z.string().optional(),
 });
 
 const experimentStepSchema = z.object({
   order: z.number().int().nonnegative(),
-  instruction: z.string().min(1),
+  instruction: nonEmptyString,
   duration: z.string().optional(),
   tips: z.string().optional(),
 });
 
 export const experimentOutputSchema = z.object({
-  title: z.string().min(1),
-  subject: z.string().min(1),
-  purpose: z.string().min(1),
+  title: nonEmptyString,
+  subject: nonEmptyString,
+  purpose: nonEmptyString,
   materials: z.array(experimentMaterialSchema).default([]),
   steps: z.array(experimentStepSchema).min(1),
   safetyNotes: z.array(z.string()).default([]),
@@ -70,20 +73,20 @@ export const experimentOutputSchema = z.object({
 // ----- Extended reading -----------------------------------------------------
 
 const readingKnowledgePointSchema = z.object({
-  title: z.string().min(1),
-  content: z.string().min(1),
+  title: nonEmptyString,
+  content: nonEmptyString,
   connections: z.string().optional(),
 });
 
 const readingResourceSchema = z.object({
-  title: z.string().min(1),
+  title: nonEmptyString,
   type: z.enum(['book', 'article', 'video', 'website', 'other']),
   description: z.string().default(''),
   url: z.string().url().optional(),
 });
 
 export const readingOutputSchema = z.object({
-  title: z.string().min(1),
+  title: nonEmptyString,
   topicOverview: z.string().default(''),
   knowledgePoints: z.array(readingKnowledgePointSchema).default([]),
   recommendedResources: z.array(readingResourceSchema).default([]),
