@@ -187,6 +187,10 @@ export async function generateClassroom(
   if (isAgentOrchestratorEnabled()) {
     return generateClassroomWithAgent(input, options);
   }
+  // --- Legacy pipeline (Phase E: scheduled for removal) ---
+  // When the agent orchestrator becomes the default, delete everything from
+  // here down to the end of the function and promote
+  // `generateClassroomWithAgent` to be the body.
   const { requirement, pdfContent } = input;
 
   await options.onProgress?.({
