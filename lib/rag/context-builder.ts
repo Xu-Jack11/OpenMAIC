@@ -1,89 +1,82 @@
 /**
- * Context Builder
+ * Context Builder — turns retrieved chunks into a prompt-ready context.
  *
- * Formats retrieved document chunks into structured context
- * suitable for injection into LLM prompts.
+ * Text-only callers read `DocumentContext.text`. Multimodal-capable callers
+ * can walk `DocumentContext.parts` to construct a Vercel AI SDK message
+ * with inline images. Image chunks without a caption degrade to a generic
+ * `[图: <document name>]` placeholder in the text view, ensuring no chunk
+ * is silently dropped.
  */
 
 import { prisma } from '@/lib/server/db';
 import { createLogger } from '@/lib/logger';
 import { retrieveChunks } from './retriever';
-import type { RetrievedChunk, DocumentContext, RetrievalOptions } from './types';
+import type { ContextPart, DocumentContext, RetrievalOptions, RetrievedChunk } from './types';
 
 const log = createLogger('RAG:ContextBuilder');
 
-// Default maximum tokens for context
 const DEFAULT_MAX_CONTEXT_TOKENS = 2000;
+const HEADER =
+  '## 课程文档参考资料\n\n以下是与当前主题相关的课程文档摘录,请在生成内容时参考这些资料:\n';
 
-/**
- * Rough token estimation (~4 chars per token)
- */
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
 /**
- * Build document context for prompt injection
+ * Build document context from retrieval options (performs the retrieval).
  */
 export async function buildDocumentContext(
   options: RetrievalOptions,
 ): Promise<DocumentContext | null> {
-  const { maxTokens = DEFAULT_MAX_CONTEXT_TOKENS } = options;
-
-  // Retrieve relevant chunks
   const chunks = await retrieveChunks(options);
-
   if (chunks.length === 0) {
     log.info('No relevant document chunks found');
     return null;
   }
-
-  // Build context with token budget
-  return formatChunksAsContext(chunks, maxTokens);
+  return formatChunksAsContext(chunks, options.maxTokens ?? DEFAULT_MAX_CONTEXT_TOKENS);
 }
 
 /**
- * Build context from pre-retrieved chunks
+ * Build context from already-retrieved chunks.
  */
 export function formatChunksAsContext(
   chunks: RetrievedChunk[],
   maxTokens: number = DEFAULT_MAX_CONTEXT_TOKENS,
 ): DocumentContext {
-  const contextParts: string[] = [];
+  const textSegments: string[] = [];
+  const parts: ContextPart[] = [{ type: 'text', value: HEADER }];
   const sourceMap = new Map<string, { documentId: string; documentName: string; count: number }>();
-  let totalTokens = 0;
+
+  let totalTokens = estimateTokens(HEADER);
   let truncated = false;
   let includedChunks = 0;
 
   for (const chunk of chunks) {
-    const chunkTokens = estimateTokens(chunk.content);
+    const rendered = renderChunkForText(chunk);
+    const chunkTokens = estimateTokens(rendered);
 
-    // Check if adding this chunk would exceed budget
     if (totalTokens + chunkTokens > maxTokens) {
-      // Try to include partial content if significant space remains
-      const remainingTokens = maxTokens - totalTokens;
-      if (remainingTokens > 100) {
-        const truncatedContent = truncateToTokens(chunk.content, remainingTokens);
-        contextParts.push(formatChunk(chunk, truncatedContent));
-        includedChunks++;
-        trackSource(sourceMap, chunk);
-      }
       truncated = true;
       break;
     }
 
-    contextParts.push(formatChunk(chunk, chunk.content));
+    textSegments.push(rendered);
+    parts.push({ type: 'text', value: rendered });
+    if (chunk.chunkType === 'image' && chunk.imagePath) {
+      parts.push({
+        type: 'image',
+        path: chunk.imagePath,
+        caption: chunk.content || undefined,
+      });
+    }
+
     totalTokens += chunkTokens;
     includedChunks++;
     trackSource(sourceMap, chunk);
   }
 
-  // Build final context text with header
-  const header =
-    '## 课程文档参考资料\n\n以下是与当前主题相关的课程文档摘录，请在生成内容时参考这些资料：\n';
-  const text = header + contextParts.join('\n\n---\n\n');
-
-  // Build sources array
+  const text = HEADER + textSegments.join('\n\n---\n\n');
   const sources = Array.from(sourceMap.values()).map((s) => ({
     documentId: s.documentId,
     documentName: s.documentName,
@@ -94,74 +87,45 @@ export function formatChunksAsContext(
     `Built context: ${includedChunks} chunks from ${sources.length} documents, truncated: ${truncated}`,
   );
 
-  return {
-    text,
-    sources,
-    totalChunks: includedChunks,
-    truncated,
-  };
+  return { text, parts, sources, totalChunks: includedChunks, truncated };
 }
 
-/**
- * Format a single chunk for context
- */
-function formatChunk(chunk: RetrievedChunk, content: string): string {
-  return `### 来源: ${chunk.documentName}\n\n${content}`;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function renderChunkForText(chunk: RetrievedChunk): string {
+  const header = `### 来源: ${chunk.documentName}`;
+  if (chunk.chunkType === 'image') {
+    const caption = chunk.content?.trim();
+    const placeholder = caption ? `[图: ${caption}]` : `[图: ${chunk.documentName}]`;
+    return `${header}\n\n${placeholder}`;
+  }
+  if (chunk.chunkType === 'table') {
+    return `${header} (表格)\n\n${chunk.content}`;
+  }
+  if (chunk.chunkType === 'formula') {
+    return `${header} (公式)\n\n$${chunk.content}$`;
+  }
+  return `${header}\n\n${chunk.content}`;
 }
 
-/**
- * Track source document for summary
- */
 function trackSource(
-  sourceMap: Map<string, { documentId: string; documentName: string; count: number }>,
+  map: Map<string, { documentId: string; documentName: string; count: number }>,
   chunk: RetrievedChunk,
 ): void {
-  const existing = sourceMap.get(chunk.documentId);
-  if (existing) {
-    existing.count++;
-  } else {
-    sourceMap.set(chunk.documentId, {
+  const existing = map.get(chunk.documentId);
+  if (existing) existing.count++;
+  else
+    map.set(chunk.documentId, {
       documentId: chunk.documentId,
       documentName: chunk.documentName,
       count: 1,
     });
-  }
 }
 
 /**
- * Truncate text to approximately N tokens
- */
-function truncateToTokens(text: string, targetTokens: number): string {
-  const targetChars = targetTokens * 4; // Approximate chars per token
-
-  if (text.length <= targetChars) {
-    return text;
-  }
-
-  // Try to break at sentence boundary
-  const truncated = text.slice(0, targetChars);
-  const lastSentenceEnd = Math.max(
-    truncated.lastIndexOf('。'),
-    truncated.lastIndexOf('.'),
-    truncated.lastIndexOf('！'),
-    truncated.lastIndexOf('？'),
-  );
-
-  if (lastSentenceEnd > targetChars * 0.7) {
-    return truncated.slice(0, lastSentenceEnd + 1) + '...';
-  }
-
-  // Break at word boundary
-  const lastSpace = truncated.lastIndexOf(' ');
-  if (lastSpace > targetChars * 0.8) {
-    return truncated.slice(0, lastSpace) + '...';
-  }
-
-  return truncated + '...';
-}
-
-/**
- * Build a simple summary of available documents (for UI display)
+ * UI helper (preserved from prior API).
  */
 export async function getDocumentContextSummary(courseId: string): Promise<{
   documentsAvailable: number;
@@ -171,6 +135,5 @@ export async function getDocumentContextSummary(courseId: string): Promise<{
     prisma.document.count({ where: { courseId } }),
     prisma.document.count({ where: { courseId, indexStatus: 'indexed' } }),
   ]);
-
   return { documentsAvailable, documentsIndexed };
 }

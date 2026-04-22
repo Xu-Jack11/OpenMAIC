@@ -119,16 +119,34 @@ Four scene types defined in `lib/types/stage.ts` as `SceneType`:
 - **RBAC**: TEACHER (edit courses) | STUDENT (read-only), enforced via `lib/server/permissions.ts`
 - **API format**: REST with `{ success: true, data }` or `{ success: false, errorCode, error, details }`
 
-### RAG System (RAGFlow)
+### RAG System (self-hosted pgvector)
 
-`lib/rag/` provides document indexing and retrieval-augmented generation, backed by RAGFlow as an external service:
-- `ragflow-client.ts` -- HTTP client wrapping RAGFlow REST API (`/api/v1`). Handles datasets, document upload, parsing, and retrieval
-- `indexer.ts` -- Uploads documents to RAGFlow, triggers parsing, polls for completion. 1 course = 1 RAGFlow dataset (mapped via `Course.ragflowDatasetId`)
-- `retriever.ts` -- Calls RAGFlow hybrid search (BM25 + vector similarity). Maps RAGFlow document IDs back to local Document records
-- `context-builder.ts` -- Assembles retrieved chunks into prompt context with token budgeting
-- Config via env vars: `RAGFLOW_BASE_URL`, `RAGFLOW_API_KEY`, `RAG_TOP_K`, `RAG_SIMILARITY_THRESHOLD`, `RAG_MAX_CONTEXT_TOKENS`
-- RAG is integrated into classroom generation (`classroom-generation.ts`), live chat (`/api/chat`), outlines streaming, and PBL chat via the shared `buildDocumentContext()` facade in `lib/rag/index.ts`
-- Graceful degradation: if RAGFlow is not configured or unreachable, all consumers continue without document context
+`lib/rag/` indexes documents into PostgreSQL (with the `pgvector` extension) and retrieves chunks using multi-path recall + rerank. **All inference stays on-prem** — embedding, rerank, and VLM parsing point at self-hosted vLLM / MinerU services. No SaaS calls.
+
+**Pipeline**:
+1. **Parse** (`mineru-client.ts`, falls back to `lib/document/`): PDFs go through self-hosted MinerU (`mineru[core,vllm]`, port 8003 by default) which returns structured blocks — text, tables (as Markdown), formulas (as LaTeX), and images with captions. Non-PDF formats use `lib/document/` as before.
+2. **Chunk** (`chunker.ts`): semantic split targeting ~800 tokens with ~120-token overlap, CJK-aware. Tables / formulas / figures become their own chunks.
+3. **Embed** (`embedding-client.ts`): Vercel AI SDK `embedMany` against vLLM `qwen3-vl-embedding` (multimodal — text and images share one vector space).
+4. **Store** (`pgvector-store.ts`): raw SQL inserts into `document_chunks` (PK, FK on `documents(id)` CASCADE, `embedding vector(N)`, `contentTsv tsvector GENERATED`). Indexes: HNSW on embedding (cosine) + GIN on tsvector + B-tree on `(documentId, chunkIndex)`.
+
+**Retrieval** (`retriever.ts` → `buildDocumentContext`):
+1. **Query rewrite** (`query-rewrite.ts`): one local LLM call produces 3 paraphrases + a HyDE hypothetical answer. Reuses `lib/ai/providers.ts` (override via `RAG_REWRITE_MODEL`, defaults to `DEFAULT_MODEL`).
+2. **Multi-path recall**: vector search for original + rewrites + HyDE (`pgvector <=>`) PLUS full-text search on the original query (`websearch_to_tsquery` + `ts_rank_cd`), all in parallel.
+3. **RRF fusion** (`rrf.ts`): reciprocal-rank merge with `k=60` across all paths.
+4. **Rerank** (`rerank-client.ts`): top-`RAG_CANDIDATE_K` candidates re-scored by vLLM `qwen3-vl-rerank`, final `RAG_TOP_K` returned.
+
+**Image chunks**: stored under `data/documents/{courseId}/{docId}/images/{chunkId}.{ext}`, referenced via `DocumentChunk.imagePath`. `DocumentContext.text` renders them as `[图: caption]` placeholders (for text-only downstream LLMs). `DocumentContext.parts` carries the structured form for future VLM callers.
+
+**Setup**:
+- Fresh database: `bash scripts/setup-db.sh` (runs `prisma migrate deploy` + `prisma generate` + `apply-rag-migration.ts`, optionally handling pgvector extension ownership if `SUPERUSER_URL` is set).
+- Manual flow: `npx prisma migrate deploy && npx tsx scripts/apply-rag-migration.ts` (the rag script probes the embedding endpoint to auto-detect the vector dim and adds the `embedding halfvec(N)` column + HNSW/GIN indexes to `document_chunks`).
+- Connectivity smoke test: `npx tsx scripts/test-rag-connectivity.ts`.
+
+**Env vars**: `EMBEDDING_BASE_URL/API_KEY/MODEL`, `RERANK_BASE_URL/API_KEY/MODEL`, `MINERU_BASE_URL/BACKEND`, `RAG_TOP_K`, `RAG_CANDIDATE_K`, `RAG_MAX_CONTEXT_TOKENS`, `RAG_ENABLE_REWRITE/HYDE/FTS`, optional `RAG_REWRITE_MODEL`.
+
+**Graceful degradation**: if `EMBEDDING_BASE_URL` is unset, retrieval returns empty context and all consumers continue without document grounding. If MinerU is unreachable, the indexer falls back to `lib/document/` parsers (text-only chunks).
+
+**Consumers**: `buildDocumentContext()` is used by `lib/server/classroom-generation.ts`, `/api/chat`, `/api/pbl/chat`, `/api/generate/scene-outlines-stream`, and `lib/generation/agent/subagents/rag-retriever.ts`.
 
 ### Document Parsing
 

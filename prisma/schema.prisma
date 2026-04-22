@@ -52,9 +52,6 @@ model Course {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  /// RAGFlow dataset ID for this course (created on first document upload)
-  ragflowDatasetId String?
-
   members         CourseMember[]
   classrooms      Classroom[]
   documents       Document[]
@@ -113,12 +110,39 @@ model Document {
   /// Indexing status: pending, indexing, indexed, failed
   indexStatus String   @default("pending")
   indexError  String?
-  /// RAGFlow document ID (set after upload to RAGFlow)
-  ragflowDocumentId String?
-  createdAt         DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  chunks DocumentChunk[]
 
   @@index([courseId])
   @@map("documents")
+}
+
+/// Chunk of a parsed document used for RAG retrieval.
+///
+/// The `embedding` (pgvector) and `contentTsv` (tsvector) columns are
+/// managed by raw SQL migrations because Prisma does not support these
+/// types natively. Do not `SELECT *` from this model; always project
+/// explicitly to avoid Prisma deserialization errors on unsupported columns.
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// Order within the source document.
+  chunkIndex Int
+  /// 'text' | 'image' | 'table' | 'formula'
+  chunkType  String   @default("text")
+  /// For text/table/formula: the textual content.
+  /// For image: optional caption (may be empty).
+  content    String?
+  /// For image chunks: relative path under data/documents/{courseId}/{docId}/images/
+  imagePath  String?
+  /// Free-form metadata: { page?, section?, caption?, ... }
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([documentId, chunkIndex])
+  @@map("document_chunks")
 }
 
 model InvitationCode {

@@ -75,6 +75,16 @@ export type Classroom = Prisma.ClassroomModel;
  */
 export type Document = Prisma.DocumentModel;
 /**
+ * Model DocumentChunk
+ * Chunk of a parsed document used for RAG retrieval.
+ *
+ * The `embedding` (pgvector) and `contentTsv` (tsvector) columns are
+ * managed by raw SQL migrations because Prisma does not support these
+ * types natively. Do not `SELECT *` from this model; always project
+ * explicitly to avoid Prisma deserialization errors on unsupported columns.
+ */
+export type DocumentChunk = Prisma.DocumentChunkModel;
+/**
  * Model InvitationCode
  *
  */

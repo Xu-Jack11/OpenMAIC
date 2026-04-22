@@ -76,3 +76,6 @@ next-env.d.ts
 /.playwright-mcp/
 /2026-*-local-command-caveat*.txt
 
+# RAG embedding dim breadcrumb (env-specific; probed at migration time)
+.rag-embedding-dim
+

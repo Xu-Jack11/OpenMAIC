@@ -43,7 +43,6 @@ export type DocumentMinAggregateOutputType = {
   storagePath: string | null;
   indexStatus: string | null;
   indexError: string | null;
-  ragflowDocumentId: string | null;
   createdAt: Date | null;
 };
 
@@ -57,7 +56,6 @@ export type DocumentMaxAggregateOutputType = {
   storagePath: string | null;
   indexStatus: string | null;
   indexError: string | null;
-  ragflowDocumentId: string | null;
   createdAt: Date | null;
 };
 
@@ -71,7 +69,6 @@ export type DocumentCountAggregateOutputType = {
   storagePath: number;
   indexStatus: number;
   indexError: number;
-  ragflowDocumentId: number;
   createdAt: number;
   _all: number;
 };
@@ -94,7 +91,6 @@ export type DocumentMinAggregateInputType = {
   storagePath?: true;
   indexStatus?: true;
   indexError?: true;
-  ragflowDocumentId?: true;
   createdAt?: true;
 };
 
@@ -108,7 +104,6 @@ export type DocumentMaxAggregateInputType = {
   storagePath?: true;
   indexStatus?: true;
   indexError?: true;
-  ragflowDocumentId?: true;
   createdAt?: true;
 };
 
@@ -122,7 +117,6 @@ export type DocumentCountAggregateInputType = {
   storagePath?: true;
   indexStatus?: true;
   indexError?: true;
-  ragflowDocumentId?: true;
   createdAt?: true;
   _all?: true;
 };
@@ -226,7 +220,6 @@ export type DocumentGroupByOutputType = {
   storagePath: string;
   indexStatus: string;
   indexError: string | null;
-  ragflowDocumentId: string | null;
   createdAt: Date;
   _count: DocumentCountAggregateOutputType | null;
   _avg: DocumentAvgAggregateOutputType | null;
@@ -260,10 +253,10 @@ export type DocumentWhereInput = {
   storagePath?: Prisma.StringFilter<'Document'> | string;
   indexStatus?: Prisma.StringFilter<'Document'> | string;
   indexError?: Prisma.StringNullableFilter<'Document'> | string | null;
-  ragflowDocumentId?: Prisma.StringNullableFilter<'Document'> | string | null;
   createdAt?: Prisma.DateTimeFilter<'Document'> | Date | string;
   course?: Prisma.XOR<Prisma.CourseScalarRelationFilter, Prisma.CourseWhereInput>;
   uploader?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>;
+  chunks?: Prisma.DocumentChunkListRelationFilter;
 };
 
 export type DocumentOrderByWithRelationInput = {
@@ -276,10 +269,10 @@ export type DocumentOrderByWithRelationInput = {
   storagePath?: Prisma.SortOrder;
   indexStatus?: Prisma.SortOrder;
   indexError?: Prisma.SortOrderInput | Prisma.SortOrder;
-  ragflowDocumentId?: Prisma.SortOrderInput | Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
   course?: Prisma.CourseOrderByWithRelationInput;
   uploader?: Prisma.UserOrderByWithRelationInput;
+  chunks?: Prisma.DocumentChunkOrderByRelationAggregateInput;
 };
 
 export type DocumentWhereUniqueInput = Prisma.AtLeast<
@@ -296,10 +289,10 @@ export type DocumentWhereUniqueInput = Prisma.AtLeast<
     storagePath?: Prisma.StringFilter<'Document'> | string;
     indexStatus?: Prisma.StringFilter<'Document'> | string;
     indexError?: Prisma.StringNullableFilter<'Document'> | string | null;
-    ragflowDocumentId?: Prisma.StringNullableFilter<'Document'> | string | null;
     createdAt?: Prisma.DateTimeFilter<'Document'> | Date | string;
     course?: Prisma.XOR<Prisma.CourseScalarRelationFilter, Prisma.CourseWhereInput>;
     uploader?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>;
+    chunks?: Prisma.DocumentChunkListRelationFilter;
   },
   'id'
 >;
@@ -314,7 +307,6 @@ export type DocumentOrderByWithAggregationInput = {
   storagePath?: Prisma.SortOrder;
   indexStatus?: Prisma.SortOrder;
   indexError?: Prisma.SortOrderInput | Prisma.SortOrder;
-  ragflowDocumentId?: Prisma.SortOrderInput | Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
   _count?: Prisma.DocumentCountOrderByAggregateInput;
   _avg?: Prisma.DocumentAvgOrderByAggregateInput;
@@ -340,7 +332,6 @@ export type DocumentScalarWhereWithAggregatesInput = {
   storagePath?: Prisma.StringWithAggregatesFilter<'Document'> | string;
   indexStatus?: Prisma.StringWithAggregatesFilter<'Document'> | string;
   indexError?: Prisma.StringNullableWithAggregatesFilter<'Document'> | string | null;
-  ragflowDocumentId?: Prisma.StringNullableWithAggregatesFilter<'Document'> | string | null;
   createdAt?: Prisma.DateTimeWithAggregatesFilter<'Document'> | Date | string;
 };
 
@@ -352,10 +343,10 @@ export type DocumentCreateInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
   course: Prisma.CourseCreateNestedOneWithoutDocumentsInput;
   uploader: Prisma.UserCreateNestedOneWithoutDocumentsInput;
+  chunks?: Prisma.DocumentChunkCreateNestedManyWithoutDocumentInput;
 };
 
 export type DocumentUncheckedCreateInput = {
@@ -368,8 +359,8 @@ export type DocumentUncheckedCreateInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
+  chunks?: Prisma.DocumentChunkUncheckedCreateNestedManyWithoutDocumentInput;
 };
 
 export type DocumentUpdateInput = {
@@ -380,10 +371,10 @@ export type DocumentUpdateInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   course?: Prisma.CourseUpdateOneRequiredWithoutDocumentsNestedInput;
   uploader?: Prisma.UserUpdateOneRequiredWithoutDocumentsNestedInput;
+  chunks?: Prisma.DocumentChunkUpdateManyWithoutDocumentNestedInput;
 };
 
 export type DocumentUncheckedUpdateInput = {
@@ -396,8 +387,8 @@ export type DocumentUncheckedUpdateInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  chunks?: Prisma.DocumentChunkUncheckedUpdateManyWithoutDocumentNestedInput;
 };
 
 export type DocumentCreateManyInput = {
@@ -410,7 +401,6 @@ export type DocumentCreateManyInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
 };
 
@@ -422,7 +412,6 @@ export type DocumentUpdateManyMutationInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
@@ -436,7 +425,6 @@ export type DocumentUncheckedUpdateManyInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
@@ -460,7 +448,6 @@ export type DocumentCountOrderByAggregateInput = {
   storagePath?: Prisma.SortOrder;
   indexStatus?: Prisma.SortOrder;
   indexError?: Prisma.SortOrder;
-  ragflowDocumentId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
 };
 
@@ -478,7 +465,6 @@ export type DocumentMaxOrderByAggregateInput = {
   storagePath?: Prisma.SortOrder;
   indexStatus?: Prisma.SortOrder;
   indexError?: Prisma.SortOrder;
-  ragflowDocumentId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
 };
 
@@ -492,12 +478,16 @@ export type DocumentMinOrderByAggregateInput = {
   storagePath?: Prisma.SortOrder;
   indexStatus?: Prisma.SortOrder;
   indexError?: Prisma.SortOrder;
-  ragflowDocumentId?: Prisma.SortOrder;
   createdAt?: Prisma.SortOrder;
 };
 
 export type DocumentSumOrderByAggregateInput = {
   sizeBytes?: Prisma.SortOrder;
+};
+
+export type DocumentScalarRelationFilter = {
+  is?: Prisma.DocumentWhereInput;
+  isNot?: Prisma.DocumentWhereInput;
 };
 
 export type DocumentCreateNestedManyWithoutUploaderInput = {
@@ -672,6 +662,32 @@ export type DocumentUncheckedUpdateManyWithoutCourseNestedInput = {
   deleteMany?: Prisma.DocumentScalarWhereInput | Prisma.DocumentScalarWhereInput[];
 };
 
+export type DocumentCreateNestedOneWithoutChunksInput = {
+  create?: Prisma.XOR<
+    Prisma.DocumentCreateWithoutChunksInput,
+    Prisma.DocumentUncheckedCreateWithoutChunksInput
+  >;
+  connectOrCreate?: Prisma.DocumentCreateOrConnectWithoutChunksInput;
+  connect?: Prisma.DocumentWhereUniqueInput;
+};
+
+export type DocumentUpdateOneRequiredWithoutChunksNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.DocumentCreateWithoutChunksInput,
+    Prisma.DocumentUncheckedCreateWithoutChunksInput
+  >;
+  connectOrCreate?: Prisma.DocumentCreateOrConnectWithoutChunksInput;
+  upsert?: Prisma.DocumentUpsertWithoutChunksInput;
+  connect?: Prisma.DocumentWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.DocumentUpdateToOneWithWhereWithoutChunksInput,
+      Prisma.DocumentUpdateWithoutChunksInput
+    >,
+    Prisma.DocumentUncheckedUpdateWithoutChunksInput
+  >;
+};
+
 export type DocumentCreateWithoutUploaderInput = {
   id?: string;
   name: string;
@@ -680,9 +696,9 @@ export type DocumentCreateWithoutUploaderInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
   course: Prisma.CourseCreateNestedOneWithoutDocumentsInput;
+  chunks?: Prisma.DocumentChunkCreateNestedManyWithoutDocumentInput;
 };
 
 export type DocumentUncheckedCreateWithoutUploaderInput = {
@@ -694,8 +710,8 @@ export type DocumentUncheckedCreateWithoutUploaderInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
+  chunks?: Prisma.DocumentChunkUncheckedCreateNestedManyWithoutDocumentInput;
 };
 
 export type DocumentCreateOrConnectWithoutUploaderInput = {
@@ -752,7 +768,6 @@ export type DocumentScalarWhereInput = {
   storagePath?: Prisma.StringFilter<'Document'> | string;
   indexStatus?: Prisma.StringFilter<'Document'> | string;
   indexError?: Prisma.StringNullableFilter<'Document'> | string | null;
-  ragflowDocumentId?: Prisma.StringNullableFilter<'Document'> | string | null;
   createdAt?: Prisma.DateTimeFilter<'Document'> | Date | string;
 };
 
@@ -764,9 +779,9 @@ export type DocumentCreateWithoutCourseInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
   uploader: Prisma.UserCreateNestedOneWithoutDocumentsInput;
+  chunks?: Prisma.DocumentChunkCreateNestedManyWithoutDocumentInput;
 };
 
 export type DocumentUncheckedCreateWithoutCourseInput = {
@@ -778,8 +793,8 @@ export type DocumentUncheckedCreateWithoutCourseInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
+  chunks?: Prisma.DocumentChunkUncheckedCreateNestedManyWithoutDocumentInput;
 };
 
 export type DocumentCreateOrConnectWithoutCourseInput = {
@@ -823,6 +838,86 @@ export type DocumentUpdateManyWithWhereWithoutCourseInput = {
   >;
 };
 
+export type DocumentCreateWithoutChunksInput = {
+  id?: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  indexStatus?: string;
+  indexError?: string | null;
+  createdAt?: Date | string;
+  course: Prisma.CourseCreateNestedOneWithoutDocumentsInput;
+  uploader: Prisma.UserCreateNestedOneWithoutDocumentsInput;
+};
+
+export type DocumentUncheckedCreateWithoutChunksInput = {
+  id?: string;
+  courseId: string;
+  uploaderId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  indexStatus?: string;
+  indexError?: string | null;
+  createdAt?: Date | string;
+};
+
+export type DocumentCreateOrConnectWithoutChunksInput = {
+  where: Prisma.DocumentWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.DocumentCreateWithoutChunksInput,
+    Prisma.DocumentUncheckedCreateWithoutChunksInput
+  >;
+};
+
+export type DocumentUpsertWithoutChunksInput = {
+  update: Prisma.XOR<
+    Prisma.DocumentUpdateWithoutChunksInput,
+    Prisma.DocumentUncheckedUpdateWithoutChunksInput
+  >;
+  create: Prisma.XOR<
+    Prisma.DocumentCreateWithoutChunksInput,
+    Prisma.DocumentUncheckedCreateWithoutChunksInput
+  >;
+  where?: Prisma.DocumentWhereInput;
+};
+
+export type DocumentUpdateToOneWithWhereWithoutChunksInput = {
+  where?: Prisma.DocumentWhereInput;
+  data: Prisma.XOR<
+    Prisma.DocumentUpdateWithoutChunksInput,
+    Prisma.DocumentUncheckedUpdateWithoutChunksInput
+  >;
+};
+
+export type DocumentUpdateWithoutChunksInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  mimeType?: Prisma.StringFieldUpdateOperationsInput | string;
+  sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number;
+  storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
+  indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
+  indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  course?: Prisma.CourseUpdateOneRequiredWithoutDocumentsNestedInput;
+  uploader?: Prisma.UserUpdateOneRequiredWithoutDocumentsNestedInput;
+};
+
+export type DocumentUncheckedUpdateWithoutChunksInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  courseId?: Prisma.StringFieldUpdateOperationsInput | string;
+  uploaderId?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  mimeType?: Prisma.StringFieldUpdateOperationsInput | string;
+  sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number;
+  storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
+  indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
+  indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+};
+
 export type DocumentCreateManyUploaderInput = {
   id?: string;
   courseId: string;
@@ -832,7 +927,6 @@ export type DocumentCreateManyUploaderInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
 };
 
@@ -844,9 +938,9 @@ export type DocumentUpdateWithoutUploaderInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   course?: Prisma.CourseUpdateOneRequiredWithoutDocumentsNestedInput;
+  chunks?: Prisma.DocumentChunkUpdateManyWithoutDocumentNestedInput;
 };
 
 export type DocumentUncheckedUpdateWithoutUploaderInput = {
@@ -858,8 +952,8 @@ export type DocumentUncheckedUpdateWithoutUploaderInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  chunks?: Prisma.DocumentChunkUncheckedUpdateManyWithoutDocumentNestedInput;
 };
 
 export type DocumentUncheckedUpdateManyWithoutUploaderInput = {
@@ -871,7 +965,6 @@ export type DocumentUncheckedUpdateManyWithoutUploaderInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
@@ -884,7 +977,6 @@ export type DocumentCreateManyCourseInput = {
   storagePath: string;
   indexStatus?: string;
   indexError?: string | null;
-  ragflowDocumentId?: string | null;
   createdAt?: Date | string;
 };
 
@@ -896,9 +988,9 @@ export type DocumentUpdateWithoutCourseInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   uploader?: Prisma.UserUpdateOneRequiredWithoutDocumentsNestedInput;
+  chunks?: Prisma.DocumentChunkUpdateManyWithoutDocumentNestedInput;
 };
 
 export type DocumentUncheckedUpdateWithoutCourseInput = {
@@ -910,8 +1002,8 @@ export type DocumentUncheckedUpdateWithoutCourseInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  chunks?: Prisma.DocumentChunkUncheckedUpdateManyWithoutDocumentNestedInput;
 };
 
 export type DocumentUncheckedUpdateManyWithoutCourseInput = {
@@ -923,8 +1015,42 @@ export type DocumentUncheckedUpdateManyWithoutCourseInput = {
   storagePath?: Prisma.StringFieldUpdateOperationsInput | string;
   indexStatus?: Prisma.StringFieldUpdateOperationsInput | string;
   indexError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  ragflowDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+};
+
+/**
+ * Count Type DocumentCountOutputType
+ */
+
+export type DocumentCountOutputType = {
+  chunks: number;
+};
+
+export type DocumentCountOutputTypeSelect<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  chunks?: boolean | DocumentCountOutputTypeCountChunksArgs;
+};
+
+/**
+ * DocumentCountOutputType without action
+ */
+export type DocumentCountOutputTypeDefaultArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the DocumentCountOutputType
+   */
+  select?: Prisma.DocumentCountOutputTypeSelect<ExtArgs> | null;
+};
+
+/**
+ * DocumentCountOutputType without action
+ */
+export type DocumentCountOutputTypeCountChunksArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.DocumentChunkWhereInput;
 };
 
 export type DocumentSelect<
@@ -940,10 +1066,11 @@ export type DocumentSelect<
     storagePath?: boolean;
     indexStatus?: boolean;
     indexError?: boolean;
-    ragflowDocumentId?: boolean;
     createdAt?: boolean;
     course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>;
     uploader?: boolean | Prisma.UserDefaultArgs<ExtArgs>;
+    chunks?: boolean | Prisma.Document$chunksArgs<ExtArgs>;
+    _count?: boolean | Prisma.DocumentCountOutputTypeDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['document']
 >;
@@ -961,7 +1088,6 @@ export type DocumentSelectCreateManyAndReturn<
     storagePath?: boolean;
     indexStatus?: boolean;
     indexError?: boolean;
-    ragflowDocumentId?: boolean;
     createdAt?: boolean;
     course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>;
     uploader?: boolean | Prisma.UserDefaultArgs<ExtArgs>;
@@ -982,7 +1108,6 @@ export type DocumentSelectUpdateManyAndReturn<
     storagePath?: boolean;
     indexStatus?: boolean;
     indexError?: boolean;
-    ragflowDocumentId?: boolean;
     createdAt?: boolean;
     course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>;
     uploader?: boolean | Prisma.UserDefaultArgs<ExtArgs>;
@@ -1000,7 +1125,6 @@ export type DocumentSelectScalar = {
   storagePath?: boolean;
   indexStatus?: boolean;
   indexError?: boolean;
-  ragflowDocumentId?: boolean;
   createdAt?: boolean;
 };
 
@@ -1016,7 +1140,6 @@ export type DocumentOmit<
   | 'storagePath'
   | 'indexStatus'
   | 'indexError'
-  | 'ragflowDocumentId'
   | 'createdAt',
   ExtArgs['result']['document']
 >;
@@ -1025,6 +1148,8 @@ export type DocumentInclude<
 > = {
   course?: boolean | Prisma.CourseDefaultArgs<ExtArgs>;
   uploader?: boolean | Prisma.UserDefaultArgs<ExtArgs>;
+  chunks?: boolean | Prisma.Document$chunksArgs<ExtArgs>;
+  _count?: boolean | Prisma.DocumentCountOutputTypeDefaultArgs<ExtArgs>;
 };
 export type DocumentIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
@@ -1046,6 +1171,7 @@ export type $DocumentPayload<
   objects: {
     course: Prisma.$CoursePayload<ExtArgs>;
     uploader: Prisma.$UserPayload<ExtArgs>;
+    chunks: Prisma.$DocumentChunkPayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
@@ -1064,10 +1190,6 @@ export type $DocumentPayload<
        */
       indexStatus: string;
       indexError: string | null;
-      /**
-       * RAGFlow document ID (set after upload to RAGFlow)
-       */
-      ragflowDocumentId: string | null;
       createdAt: Date;
     },
     ExtArgs['result']['document']
@@ -1632,6 +1754,17 @@ export interface Prisma__DocumentClient<
     ExtArgs,
     GlobalOmitOptions
   >;
+  chunks<T extends Prisma.Document$chunksArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.Document$chunksArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$DocumentChunkPayload<ExtArgs>,
+        T,
+        'findMany',
+        GlobalOmitOptions
+      >
+    | Null
+  >;
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1672,7 +1805,6 @@ export interface DocumentFieldRefs {
   readonly storagePath: Prisma.FieldRef<'Document', 'String'>;
   readonly indexStatus: Prisma.FieldRef<'Document', 'String'>;
   readonly indexError: Prisma.FieldRef<'Document', 'String'>;
-  readonly ragflowDocumentId: Prisma.FieldRef<'Document', 'String'>;
   readonly createdAt: Prisma.FieldRef<'Document', 'DateTime'>;
 }
 
@@ -2099,6 +2231,34 @@ export type DocumentDeleteManyArgs<
    * Limit how many Documents to delete.
    */
   limit?: number;
+};
+
+/**
+ * Document.chunks
+ */
+export type Document$chunksArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the DocumentChunk
+   */
+  select?: Prisma.DocumentChunkSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the DocumentChunk
+   */
+  omit?: Prisma.DocumentChunkOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.DocumentChunkInclude<ExtArgs> | null;
+  where?: Prisma.DocumentChunkWhereInput;
+  orderBy?:
+    | Prisma.DocumentChunkOrderByWithRelationInput
+    | Prisma.DocumentChunkOrderByWithRelationInput[];
+  cursor?: Prisma.DocumentChunkWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.DocumentChunkScalarFieldEnum | Prisma.DocumentChunkScalarFieldEnum[];
 };
 
 /**

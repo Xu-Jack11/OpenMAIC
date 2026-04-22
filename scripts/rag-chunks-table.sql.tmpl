@@ -1,0 +1,36 @@
+-- Add the vector + full-text columns + indexes to `document_chunks`.
+--
+-- The table's scalar columns are created by the Prisma init migration.
+-- This template is substituted + executed by scripts/apply-rag-migration.ts
+-- with {{DIM}} replaced by the probed embedding dimension.
+--
+-- Uses `halfvec` (float16) instead of `vector` because pgvector caps the
+-- `vector` HNSW index at 2000 dims; `halfvec` supports up to 4000 and halves
+-- storage with negligible cosine retrieval impact.
+
+-- 1. Add the embedding column
+ALTER TABLE "document_chunks"
+    ADD COLUMN IF NOT EXISTS "embedding" halfvec({{DIM}});
+
+-- 2. Add the generated tsvector column for full-text search.
+--    We conditionally add it because PG doesn't support IF NOT EXISTS on
+--    generated columns in all versions.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'document_chunks' AND column_name = 'contentTsv'
+    ) THEN
+        ALTER TABLE "document_chunks"
+            ADD COLUMN "contentTsv" tsvector
+            GENERATED ALWAYS AS (to_tsvector('simple', COALESCE("content", ''))) STORED;
+    END IF;
+END$$;
+
+-- 3. HNSW index on the embedding (cosine)
+CREATE INDEX IF NOT EXISTS "document_chunks_embedding_hnsw_idx"
+    ON "document_chunks" USING hnsw ("embedding" halfvec_cosine_ops);
+
+-- 4. GIN index on the tsvector
+CREATE INDEX IF NOT EXISTS "document_chunks_contentTsv_gin_idx"
+    ON "document_chunks" USING gin ("contentTsv");
