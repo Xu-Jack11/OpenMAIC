@@ -9,16 +9,7 @@ services:
       # Optional: mount server-providers.yml for provider config
       # - ./server-providers.yml:/app/server-providers.yml:ro
       - openmaic-data:/app/data
-    networks:
-      - default
-      - ragflow_default
     restart: unless-stopped
 
 volumes:
   openmaic-data:
-
-# Connect to RAGFlow's Docker network (deploy RAGFlow separately).
-# If not using RAGFlow, remove the ragflow_default network references.
-networks:
-  ragflow_default:
-    external: true

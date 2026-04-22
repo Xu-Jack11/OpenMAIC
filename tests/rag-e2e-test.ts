@@ -1,15 +1,17 @@
 /**
- * RAG End-to-End Test (RAGFlow)
+ * RAG End-to-End Test (pgvector)
  *
- * Tests the full RAG pipeline via RAGFlow:
- * upload → parse → retrieve → build context
+ * Tests the full in-process RAG pipeline:
+ *   upload → parse → chunk → embed → pgvector hybrid retrieval → build context
  *
- * Requires a running RAGFlow instance.
- * Set RAGFLOW_BASE_URL and RAGFLOW_API_KEY before running.
+ * Requires:
+ *   - Postgres with the `vector` extension and the migration
+ *     `20260422120000_pgvector_rag` applied
+ *   - EMBEDDING_API_KEY (and optional EMBEDDING_BASE_URL / EMBEDDING_MODEL)
  */
 import { prisma } from '../lib/server/db';
 import { indexDocument, buildDocumentContext, reindexDocument } from '../lib/rag';
-import * as ragflow from '../lib/rag/ragflow-client';
+import { isConfigured } from '../lib/rag/embedder';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -20,14 +22,7 @@ const TEST_IDS = {
 };
 
 async function cleanup() {
-  // Clean up RAGFlow dataset if it exists
-  const course = await prisma.course
-    .findUnique({ where: { id: TEST_IDS.course } })
-    .catch(() => null);
-  if (course?.ragflowDatasetId && ragflow.isConfigured()) {
-    await ragflow.deleteDataset(course.ragflowDatasetId).catch(() => {});
-  }
-
+  // FK cascades wipe document_chunks automatically.
   await prisma.document.deleteMany({ where: { id: TEST_IDS.doc } }).catch(() => {});
   await prisma.courseMember.deleteMany({ where: { courseId: TEST_IDS.course } }).catch(() => {});
   await prisma.course.deleteMany({ where: { id: TEST_IDS.course } }).catch(() => {});
@@ -35,15 +30,8 @@ async function cleanup() {
 }
 
 async function main() {
-  // Verify RAGFlow is configured
-  if (!ragflow.isConfigured()) {
-    console.error('ERROR: RAGFLOW_BASE_URL and RAGFLOW_API_KEY must be set');
-    process.exit(1);
-  }
-
-  const healthy = await ragflow.healthCheck();
-  if (!healthy) {
-    console.error('ERROR: RAGFlow is not reachable');
+  if (!isConfigured()) {
+    console.error('ERROR: EMBEDDING_API_KEY must be set');
     process.exit(1);
   }
 
@@ -62,7 +50,6 @@ async function main() {
     },
   });
 
-  // Write a test file to disk
   const content = [
     '人工智能（Artificial Intelligence，简称AI）是计算机科学的一个分支，旨在开发能够模拟人类智能的系统。',
     '机器学习是人工智能的核心技术之一，通过大量数据训练模型来完成特定任务。',
@@ -71,9 +58,9 @@ async function main() {
     '大语言模型（LLM）如GPT和Claude，通过海量文本数据预训练，展现出强大的语言理解和生成能力。',
   ].join('\n');
 
-  const testFilePath = path.join(process.cwd(), 'data', 'documents', TEST_IDS.course);
-  await fs.mkdir(testFilePath, { recursive: true });
-  const filePath = path.join(testFilePath, `${TEST_IDS.doc}.txt`);
+  const testFileDir = path.join(process.cwd(), 'data', 'documents', TEST_IDS.course);
+  await fs.mkdir(testFileDir, { recursive: true });
+  const filePath = path.join(testFileDir, `${TEST_IDS.doc}.txt`);
   await fs.writeFile(filePath, content, 'utf-8');
 
   const doc = await prisma.document.create({
@@ -90,24 +77,17 @@ async function main() {
   });
   console.log('  Created user, course, document, test file');
 
-  // 2. Index via RAGFlow
-  console.log('\n=== Step 2: Index document via RAGFlow ===');
+  // 2. Index
+  console.log('\n=== Step 2: Index document (pgvector) ===');
   const result = await indexDocument(doc.id);
-  console.log(`  Index result: status=${result.status}, error=${result.error || 'none'}`);
-
+  console.log(
+    `  status=${result.status}, chunks=${result.chunksCreated}, error=${result.error || 'none'}`,
+  );
   if (result.status !== 'indexed') {
-    console.error('  ERROR: Indexing failed!');
+    console.error('  ERROR: indexing failed');
     await cleanup();
     process.exit(1);
   }
-
-  // Verify document has ragflowDocumentId
-  const indexedDoc = await prisma.document.findUniqueOrThrow({ where: { id: doc.id } });
-  console.log(`  ragflowDocumentId: ${indexedDoc.ragflowDocumentId}`);
-
-  // Verify course has ragflowDatasetId
-  const updatedCourse = await prisma.course.findUniqueOrThrow({ where: { id: course.id } });
-  console.log(`  ragflowDatasetId: ${updatedCourse.ragflowDatasetId}`);
 
   // 3. Retrieve
   console.log('\n=== Step 3: Retrieve (query: "什么是深度学习") ===');
@@ -123,7 +103,7 @@ async function main() {
     console.log(`  Truncated: ${context.truncated}`);
     console.log(`  Context preview: ${context.text.substring(0, 200)}...`);
   } else {
-    console.log('  No context returned (may need time for RAGFlow indexing)');
+    console.log('  No context returned');
   }
 
   // 4. Re-index
@@ -134,7 +114,7 @@ async function main() {
   // 5. Cleanup
   console.log('\n=== Cleanup ===');
   await cleanup();
-  await fs.rm(testFilePath, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(testFileDir, { recursive: true, force: true }).catch(() => {});
   console.log('  Done! All test data removed.');
 
   await prisma.$disconnect();

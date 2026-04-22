@@ -21,3 +21,6 @@ out/
 
 # SVG arc helper (vendored declaration)
 lib/export/svg-arc-to-cubic-bezier.d.ts
+
+# Prisma-generated client (reformatted on every `prisma generate`)
+lib/generated/

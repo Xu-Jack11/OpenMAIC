@@ -52,13 +52,11 @@ model Course {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  /// RAGFlow dataset ID for this course (created on first document upload)
-  ragflowDatasetId String?
-
   members         CourseMember[]
   classrooms      Classroom[]
   documents       Document[]
   invitationCodes InvitationCode[]
+  documentChunks  DocumentChunk[]
 
   @@index([creatorId])
   @@map("courses")
@@ -113,12 +111,37 @@ model Document {
   /// Indexing status: pending, indexing, indexed, failed
   indexStatus String   @default("pending")
   indexError  String?
-  /// RAGFlow document ID (set after upload to RAGFlow)
-  ragflowDocumentId String?
-  createdAt         DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  chunks DocumentChunk[]
 
   @@index([courseId])
   @@map("documents")
+}
+
+/// Chunk-level vector + keyword index for RAG retrieval.
+/// Managed by `lib/rag/indexer.ts` (embedding, upsert) and queried by
+/// `lib/rag/retriever.ts` (hybrid BM25 + pgvector cosine).
+///
+/// The `embedding` and `tsv` columns are declared in raw SQL (see migration
+/// `20260422120000_pgvector_rag`) because Prisma does not model pgvector or
+/// tsvector types directly. Prisma reads/writes rows as regular text for
+/// `content`/`metadata`; vector operations go through raw queries.
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  content    String
+  chunkIndex Int
+  tokenCount Int      @default(0)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
+  @@index([courseId])
+  @@map("document_chunks")
 }
 
 model InvitationCode {

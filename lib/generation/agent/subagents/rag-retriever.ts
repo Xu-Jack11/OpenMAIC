@@ -20,7 +20,7 @@ export const ragRetrieverSubagent: SubagentDefinition<RagRetrieverInput, RagRetr
   id: 'rag-retriever',
   label: 'RAG retriever',
   description:
-    'Retrieves relevant document chunks for a query from the course corpus (RAGFlow) and formats them as prompt context.',
+    'Retrieves relevant document chunks for a query from the course corpus (pgvector hybrid search) and formats them as prompt context.',
   inputSchema: ragRetrieverInputSchema,
   outputSchema: ragRetrieverOutputSchema,
   timeoutMs: 60000,
