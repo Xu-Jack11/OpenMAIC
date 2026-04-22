@@ -35,6 +35,27 @@ export interface SkillManifest {
 
     /** Key in the LLM response JSON to extract (e.g. 'handout') */
     responseKey: string;
+
+    /**
+     * Phase D — optional Zod schema id for output validation. When set, the
+     * skill API route looks up `lib/plugins/schemas.ts` for a matching
+     * schema and validates the parsed response. Missing or unknown ids skip
+     * validation (backward-compatible with legacy manifests).
+     */
+    outputSchema?: string;
+
+    /**
+     * Phase D — declares that the plugin supports incremental output. The
+     * runtime will stream partial data when `true`. Default false.
+     */
+    streaming?: boolean;
+
+    /**
+     * Phase D — ids of secondary tools this plugin may invoke during
+     * generation (e.g. 'rag.search'). Advisory only in Phase D; Phase B's
+     * LLM planner may consume it in a future update.
+     */
+    tools?: string[];
   };
 
   /** Optional custom preview component path (relative to components/supplementary/) */

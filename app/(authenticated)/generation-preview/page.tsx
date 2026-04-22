@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, Sparkles, AlertCircle, AlertTriangle, ArrowLeft, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,8 @@ import { AgentRevealModal } from '@/components/agent/agent-reveal-modal';
 import { createLogger } from '@/lib/logger';
 import { type GenerationSessionState, ALL_STEPS, getActiveSteps } from './types';
 import { StepVisualizer } from './components/visualizers';
+import { AgentActivityTree } from '@/components/generation/agent-activity-tree';
+import { useAgentActivityStore } from '@/lib/store/agent-activity';
 
 const log = createLogger('GenerationPreview');
 
@@ -1137,6 +1140,53 @@ function GenerationPreviewContent() {
   );
 }
 
+/**
+ * Agent-mode generation view — renders when `?jobId=xxx` is present. Shows the
+ * hierarchical agent activity tree fed by the SSE event stream. This path is
+ * used when the classroom was created server-side with
+ * `GENERATION_AGENT_MODE=phase-a|tool_use`.
+ */
+function AgentGenerationView() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { t } = useI18n();
+  const jobId = searchParams.get('jobId');
+  const classroomResult = useAgentActivityStore((s) => s.classroomResult);
+
+  // Redirect to the classroom when generation finishes.
+  useEffect(() => {
+    if (classroomResult?.url) {
+      router.push(classroomResult.url);
+    }
+  }, [classroomResult?.url, router]);
+
+  return (
+    <div className="flex min-h-[100dvh] w-full flex-col items-center bg-gradient-to-b from-slate-50 to-slate-100 px-4 py-12 dark:from-slate-950 dark:to-slate-900">
+      <div className="w-full max-w-2xl space-y-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold">
+            {t('generation.generation.generatingOutlines')}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('generation.generation.aiWorking')}
+          </p>
+        </div>
+
+        <Card className="p-6">
+          <AgentActivityTree jobId={jobId} />
+        </Card>
+
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={() => router.back()}>
+            <ArrowLeft className="mr-2 size-4" />
+            {t('generation.goBackAndRetry')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GenerationPreviewPage() {
   return (
     <Suspense
@@ -1149,7 +1199,17 @@ export default function GenerationPreviewPage() {
         </div>
       }
     >
-      <GenerationPreviewContent />
+      <GenerationPreviewPageInner />
     </Suspense>
   );
+}
+
+/**
+ * Dispatch between the legacy client-side generation flow and the new
+ * agent-mode flow based on the presence of a `jobId` URL param.
+ */
+function GenerationPreviewPageInner() {
+  const searchParams = useSearchParams();
+  const hasJobId = !!searchParams.get('jobId');
+  return hasJobId ? <AgentGenerationView /> : <GenerationPreviewContent />;
 }

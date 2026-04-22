@@ -33,6 +33,9 @@ import { prisma } from '@/lib/server/db';
 import type { UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
+import { runGenerationAgent } from '@/lib/generation/agent/orchestrator';
+import { generationAgentEventHub } from '@/lib/generation/agent/event-hub';
+import { isAgentOrchestratorEnabled } from '@/lib/generation/agent/config';
 
 const log = createLogger('Classroom');
 
@@ -166,13 +169,28 @@ Return a JSON object with this exact structure:
   }));
 }
 
+// Feature-flag reading is centralized in `lib/generation/agent/config.ts` so
+// the dispatcher in the orchestrator and this call site can't drift.
+
 export async function generateClassroom(
   input: GenerateClassroomInput,
   options: {
     baseUrl: string;
     onProgress?: (progress: ClassroomGenerationProgress) => Promise<void> | void;
+    /**
+     * Classroom generation job id. When set, the orchestrator publishes
+     * events to the in-memory hub under this key so SSE clients can subscribe.
+     */
+    jobId?: string;
   },
 ): Promise<GenerateClassroomResult> {
+  if (isAgentOrchestratorEnabled()) {
+    return generateClassroomWithAgent(input, options);
+  }
+  // --- Legacy pipeline (Phase E: scheduled for removal) ---
+  // When the agent orchestrator becomes the default, delete everything from
+  // here down to the end of the function and promote
+  // `generateClassroomWithAgent` to be the body.
   const { requirement, pdfContent } = input;
 
   await options.onProgress?.({
@@ -525,6 +543,224 @@ export async function generateClassroom(
     message: 'Classroom generation completed',
     scenesGenerated: scenes.length,
     totalScenes: outlines.length,
+  });
+
+  return {
+    id: persisted.id,
+    url: persisted.url,
+    stage,
+    scenes,
+    scenesCount: scenes.length,
+    createdAt: persisted.createdAt,
+  };
+}
+
+/**
+ * Phase A agent-orchestrator path. Dispatched from `generateClassroom` when
+ * `GENERATION_AGENT_MODE=phase-a`. Behavior mirrors the legacy path: it wraps
+ * the same subagent functions (requirement-analyzer, outline-generator, etc.)
+ * and forwards progress to both `onProgress` and the SSE event hub.
+ */
+async function generateClassroomWithAgent(
+  input: GenerateClassroomInput,
+  options: {
+    baseUrl: string;
+    onProgress?: (progress: ClassroomGenerationProgress) => Promise<void> | void;
+    jobId?: string;
+  },
+): Promise<GenerateClassroomResult> {
+  const { requirement, pdfContent } = input;
+
+  await options.onProgress?.({
+    step: 'initializing',
+    progress: 5,
+    message: 'Initializing classroom generation (agent mode)',
+    scenesGenerated: 0,
+  });
+
+  const { model: languageModel, modelInfo, modelString } = resolveModel({});
+  log.info(`[agent] Using server-configured model: ${modelString}`);
+
+  const { providerId } = parseModelString(modelString);
+  const apiKey = resolveApiKey(providerId);
+  if (!apiKey) {
+    throw new Error(
+      `No API key configured for provider "${providerId}". ` +
+        `Set the appropriate key in .env.local or server-providers.yml (e.g. ${providerId.toUpperCase()}_API_KEY).`,
+    );
+  }
+
+  const aiCall: AICallFn = async (systemPrompt, userPrompt) => {
+    const result = await callLLM(
+      {
+        model: languageModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        maxOutputTokens: modelInfo?.outputWindow,
+      },
+      'generate-classroom',
+    );
+    return result.text;
+  };
+
+  const lightweightAiCall: AICallFn = async (systemPrompt, userPrompt) => {
+    const result = await callLLM(
+      {
+        model: languageModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        maxOutputTokens: 256,
+      },
+      'web-search-query-rewrite',
+    );
+    return result.text;
+  };
+
+  const lang = normalizeLanguage(input.language);
+  const pdfText = pdfContent?.text || undefined;
+
+  // Resolve agents (same logic as the legacy path).
+  let agents: AgentInfo[];
+  const agentMode = input.agentMode || 'default';
+  if (agentMode === 'generate') {
+    log.info('[agent] Generating custom agent profiles via LLM...');
+    try {
+      agents = await generateAgentProfiles(requirement, lang, aiCall);
+    } catch (e) {
+      log.warn('[agent] Agent profile generation failed, falling back to defaults:', e);
+      agents = getDefaultAgents();
+    }
+  } else {
+    agents = getDefaultAgents();
+  }
+  const teacherContext = formatTeacherPersonaForPrompt(agents);
+
+  // Optional web-search api key (leave empty string to signal unavailability).
+  const webSearchApiKey = input.enableWebSearch ? resolveWebSearchApiKey() || undefined : undefined;
+  if (input.enableWebSearch && !webSearchApiKey) {
+    log.warn('[agent] enableWebSearch is true but no Tavily key configured; skipping');
+  }
+
+  // Available course documents for requirement analyzer.
+  let availableDocuments: Array<{ id: string; name: string }> | undefined;
+  if (input.courseId) {
+    try {
+      const docs = await prisma.document.findMany({
+        where: { courseId: input.courseId, indexStatus: 'indexed' },
+        select: { id: true, name: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (docs.length > 0) availableDocuments = docs;
+    } catch (e) {
+      log.warn('[agent] Failed to fetch available course documents:', e);
+    }
+  }
+
+  const stageId = nanoid(10);
+  const stage: Stage = {
+    id: stageId,
+    name: requirement.slice(0, 50),
+    description: undefined,
+    language: lang,
+    style: 'interactive',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    generatedAgentConfigs: agents.map((a, i) => ({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      persona: a.persona || '',
+      avatar: AGENT_DEFAULT_AVATARS[i % AGENT_DEFAULT_AVATARS.length],
+      color: AGENT_COLOR_PALETTE[i % AGENT_COLOR_PALETTE.length],
+      priority: a.role === 'teacher' ? 10 : a.role === 'assistant' ? 7 : 5,
+    })),
+  };
+
+  const store = createInMemoryStore(stage);
+  const api = createStageAPI(store);
+
+  const result = await runGenerationAgent(
+    {
+      requirement,
+      language: lang,
+      aiCall,
+      lightweightAiCall,
+      languageModel,
+      maxOutputTokens: modelInfo?.outputWindow,
+      baseUrl: options.baseUrl,
+      agents,
+      stageApi: api,
+      stageId,
+      pdfText,
+      teacherContext,
+      enableWebSearch: input.enableWebSearch && !!webSearchApiKey,
+      webSearchApiKey,
+      enableImageGeneration: input.enableImageGeneration,
+      enableVideoGeneration: input.enableVideoGeneration,
+      enableTTS: input.enableTTS,
+      courseId: input.courseId,
+      availableDocuments,
+    },
+    {
+      onEvent: (event) => {
+        if (options.jobId) generationAgentEventHub.publish(options.jobId, event);
+        // Forward progress events to the legacy onProgress callback so the
+        // existing polling endpoint keeps reporting percentages.
+        if (event.type === 'agent.progress' && options.onProgress) {
+          void options.onProgress({
+            step: (event.step as ClassroomGenerationStep | undefined) ?? 'generating_scenes',
+            progress: event.pct,
+            message: event.message,
+            scenesGenerated: event.scenesGenerated ?? 0,
+            totalScenes: event.totalScenes,
+          });
+        }
+      },
+    },
+  );
+
+  // Prefer the first outline title for the stage name, matching legacy behavior.
+  if (result.outlines[0]?.title) stage.name = result.outlines[0].title;
+
+  const scenes = result.scenes;
+  log.info(`[agent] Pipeline complete: ${scenes.length} scenes generated`);
+  if (scenes.length === 0) throw new Error('No scenes were generated');
+
+  await options.onProgress?.({
+    step: 'persisting',
+    progress: 98,
+    message: 'Persisting classroom data',
+    scenesGenerated: scenes.length,
+    totalScenes: result.outlines.length,
+  });
+
+  const persisted = await persistClassroom({ id: stageId, stage, scenes }, options.baseUrl);
+
+  log.info(`[agent] Classroom persisted: ${persisted.id}, URL: ${persisted.url}`);
+
+  if (options.jobId) {
+    const { jobId } = options;
+    generationAgentEventHub.publish(jobId, {
+      type: 'classroom.done',
+      classroomId: persisted.id,
+      url: persisted.url,
+      scenesCount: scenes.length,
+    });
+    // Grace window for late SSE reconnects to replay the terminal event
+    // before the channel is torn down.
+    setTimeout(() => generationAgentEventHub.close(jobId), 60_000).unref?.();
+  }
+
+  await options.onProgress?.({
+    step: 'completed',
+    progress: 100,
+    message: 'Classroom generation completed',
+    scenesGenerated: scenes.length,
+    totalScenes: result.outlines.length,
   });
 
   return {

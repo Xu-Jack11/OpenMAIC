@@ -15,6 +15,7 @@ generation:
     language: stage.language
     sceneData: sceneSummary
   responseKey: handout
+  outputSchema: handout
 
 preview:
   component: handout-preview

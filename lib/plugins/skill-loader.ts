@@ -91,6 +91,7 @@ function buildPlugin(manifest: SkillManifest): GenerationPlugin {
           promptId: manifest.generation.promptId,
           variables,
           responseKey: manifest.generation.responseKey,
+          outputSchema: manifest.generation.outputSchema,
         }),
       });
 
