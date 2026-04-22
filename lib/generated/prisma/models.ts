@@ -13,5 +13,6 @@ export type * from './models/Course';
 export type * from './models/CourseMember';
 export type * from './models/Classroom';
 export type * from './models/Document';
+export type * from './models/DocumentChunk';
 export type * from './models/InvitationCode';
 export type * from './commonInputTypes';

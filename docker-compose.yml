@@ -9,16 +9,28 @@ services:
       # Optional: mount server-providers.yml for provider config
       # - ./server-providers.yml:/app/server-providers.yml:ro
       - openmaic-data:/app/data
-    networks:
-      - default
-      - ragflow_default
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # PostgreSQL with the pgvector extension pre-installed. Used for application
+  # data AND as the vector store for the self-hosted RAG pipeline.
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: openmaic
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - openmaic-postgres:/var/lib/postgresql/data
     restart: unless-stopped
 
 volumes:
   openmaic-data:
+  openmaic-postgres:
 
-# Connect to RAGFlow's Docker network (deploy RAGFlow separately).
-# If not using RAGFlow, remove the ragflow_default network references.
-networks:
-  ragflow_default:
-    external: true
+# Note: the embedding / rerank / MinerU services are deployed separately on
+# GPU hosts via vLLM + MinerU CLI. Configure their URLs in .env.local:
+#   EMBEDDING_BASE_URL, RERANK_BASE_URL, MINERU_BASE_URL

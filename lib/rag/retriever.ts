@@ -1,179 +1,197 @@
 /**
- * RAG Retriever (RAGFlow)
+ * RAG Retriever — self-hosted pgvector backend.
  *
- * Retrieves relevant document chunks for a given query
- * using RAGFlow's hybrid search (BM25 + vector similarity).
+ * Pipeline per `retrieveChunks` call:
+ *   1. (optional) `rewriteQuery` — local LLM produces HyDE + 3 rewrites
+ *   2. `embedTexts([original, ...rewrites, hyde])` — one batched call
+ *   3. Parallel paths:
+ *        a. vector search for each embedding
+ *        b. full-text search on original query (websearch_to_tsquery)
+ *   4. RRF fusion (k=60) — union the candidate pool
+ *   5. Rerank top-N via qwen3-vl-rerank
+ *   6. Return `topK` best hits as `RetrievedChunk[]`
  */
 
 import { prisma } from '@/lib/server/db';
 import { createLogger } from '@/lib/logger';
-import * as ragflow from './ragflow-client';
+import { embedTexts, isConfigured as isEmbedConfigured } from './embedding-client';
+import { rerank } from './rerank-client';
+import { rewriteQuery } from './query-rewrite';
+import { rrfFuseIds } from './rrf';
+import {
+  vectorSearch,
+  vectorSearchMulti,
+  ftsSearch,
+  getChunksByIds,
+  type SearchHit,
+} from './pgvector-store';
 import type { RetrievedChunk, RetrievalOptions } from './types';
 
 const log = createLogger('RAG:Retriever');
 
-// Default retrieval parameters
-const DEFAULT_TOP_K = (() => {
-  const parsed = Number.parseInt(process.env.RAG_TOP_K || '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
-})();
-const DEFAULT_SIMILARITY_THRESHOLD = (() => {
-  const parsed = Number.parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '');
-  return Number.isFinite(parsed) ? parsed : 0.3;
-})();
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
 
-/**
- * Retrieve relevant document chunks for a query via RAGFlow
- */
+const DEFAULT_TOP_K = parseIntEnv('RAG_TOP_K', 5);
+const DEFAULT_CANDIDATE_K = parseIntEnv('RAG_CANDIDATE_K', 20);
+
+function parseIntEnv(name: string, fallback: number): number {
+  const v = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+function readFlag(envVar: string, fallback: boolean): boolean {
+  const v = process.env[envVar];
+  if (v === undefined) return fallback;
+  return !(v === 'false' || v === '0' || v.toLowerCase() === 'off');
+}
+
+// ---------------------------------------------------------------------------
+// Main entrypoints
+// ---------------------------------------------------------------------------
+
 export async function retrieveChunks(options: RetrievalOptions): Promise<RetrievedChunk[]> {
-  const {
-    courseId,
-    query,
-    topK = DEFAULT_TOP_K,
-    similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD,
-    documentIds,
-  } = options;
+  const { courseId, query, topK = DEFAULT_TOP_K, documentIds, enableRewrite } = options;
 
-  if (!ragflow.isConfigured()) {
-    log.warn('RAGFlow is not configured — returning empty results');
+  if (!isEmbedConfigured()) {
+    log.warn('EMBEDDING_BASE_URL not configured — returning empty results');
     return [];
   }
 
-  log.info(`Retrieving chunks for course ${courseId}, query length: ${query.length}`);
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
 
-  // Look up the RAGFlow dataset ID for this course
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    select: { ragflowDatasetId: true },
+  // 1. Query rewriting
+  const { rewrites, hyde } = await rewriteQuery(trimmedQuery, {
+    enableRewrite,
   });
 
-  if (!course?.ragflowDatasetId) {
-    log.info(`No RAGFlow dataset for course ${courseId} — no documents indexed`);
+  // 2. Embed everything in one batched call
+  const embedInputs = [trimmedQuery, ...rewrites];
+  if (hyde) embedInputs.push(hyde);
+
+  let embeddings: number[][];
+  try {
+    embeddings = await embedTexts(embedInputs);
+  } catch (err) {
+    log.warn(`Embedding query failed: ${(err as Error).message}`);
     return [];
   }
 
-  // Map OpenMAIC document IDs to RAGFlow document IDs (if filtering)
-  let ragflowDocIds: string[] | undefined;
-  if (documentIds?.length) {
-    const docs = await prisma.document.findMany({
-      where: { id: { in: documentIds }, ragflowDocumentId: { not: null } },
-      select: { id: true, ragflowDocumentId: true },
+  const candidateK = DEFAULT_CANDIDATE_K;
+
+  // 3. Run all retrieval paths in parallel
+  const vectorPromises = embeddings.map((v) => vectorSearch(v, courseId, candidateK, documentIds));
+  const ftsPromise = readFlag('RAG_ENABLE_FTS', true)
+    ? ftsSearch(trimmedQuery, courseId, candidateK, documentIds)
+    : Promise.resolve<SearchHit[]>([]);
+
+  const [vectorHitsArr, ftsHits] = await Promise.all([Promise.all(vectorPromises), ftsPromise]);
+
+  // 4. RRF fusion
+  const idLists: string[][] = [
+    ...vectorHitsArr.map((hits) => hits.map((h) => h.id)),
+    ftsHits.map((h) => h.id),
+  ];
+  const fused = rrfFuseIds(idLists);
+
+  if (fused.length === 0) {
+    log.info('No candidates found after fusion');
+    return [];
+  }
+
+  // 5. Hydrate full chunk rows for the rerank stage
+  const candidateIds = fused.slice(0, candidateK).map((f) => f.id);
+  const hydrated = await getChunksByIds(candidateIds);
+
+  // Build rerank payload: text chunks use content, image chunks use caption
+  // (possibly empty) prefixed with a marker to hint the reranker.
+  const rerankInputs = hydrated.map((h) => ({
+    id: h.id,
+    text:
+      h.chunkType === 'image' ? `[图: ${h.content?.trim() || h.documentName}]` : (h.content ?? ''),
+  }));
+
+  const rerankResults = await rerank(trimmedQuery, rerankInputs, { topK });
+
+  // 6. Assemble final output in rerank order
+  const byId = new Map(hydrated.map((h) => [h.id, h]));
+  const out: RetrievedChunk[] = [];
+  for (const r of rerankResults) {
+    const hit = byId.get(r.id);
+    if (!hit) continue;
+    out.push({
+      id: hit.id,
+      documentId: hit.documentId,
+      documentName: hit.documentName,
+      chunkType: hit.chunkType,
+      content: hit.content ?? '',
+      imagePath: hit.imagePath ?? undefined,
+      similarity: r.score,
+      metadata: hit.metadata ?? undefined,
     });
-    ragflowDocIds = docs.map((d) => d.ragflowDocumentId).filter((id): id is string => id !== null);
-
-    if (ragflowDocIds.length === 0) {
-      log.info('None of the filtered documents have been indexed in RAGFlow');
-      return [];
-    }
+    if (out.length >= topK) break;
   }
 
-  // Call RAGFlow retrieval
-  const chunks = await ragflow.retrieve({
-    datasetIds: [course.ragflowDatasetId],
-    question: query,
-    topK,
-    similarityThreshold,
-    documentIds: ragflowDocIds,
-  });
-
-  log.info(`Retrieved ${chunks.length} relevant chunks`);
-
-  // Resolve local document names from RAGFlow document IDs
-  // RAGFlow returns documentName as document_keyword, but we prefer our local names
-  const ragflowDocIdSet = new Set(chunks.map((c) => c.documentId));
-  const localDocs =
-    ragflowDocIdSet.size > 0
-      ? await prisma.document.findMany({
-          where: { ragflowDocumentId: { in: [...ragflowDocIdSet] } },
-          select: { id: true, name: true, ragflowDocumentId: true },
-        })
-      : [];
-
-  const docNameMap = new Map<string, { id: string; name: string }>();
-  for (const doc of localDocs) {
-    if (doc.ragflowDocumentId) {
-      docNameMap.set(doc.ragflowDocumentId, { id: doc.id, name: doc.name });
-    }
-  }
-
-  return chunks.map((chunk) => {
-    const localDoc = docNameMap.get(chunk.documentId);
-    return {
-      id: chunk.id,
-      documentId: localDoc?.id || chunk.documentId,
-      documentName: localDoc?.name || chunk.documentName,
-      content: chunk.content,
-      similarity: chunk.similarity,
-    };
-  });
+  log.info(
+    `Retrieved ${out.length} chunks (candidates=${hydrated.length}, rewrites=${rewrites.length}, hyde=${hyde ? 1 : 0})`,
+  );
+  return out;
 }
 
 /**
- * Retrieve chunks from multiple courses (cross-course context)
+ * Retrieve chunks from multiple courses. Same shape as single-course retrieval
+ * but without query rewriting (to keep cross-course lookups cheap). FTS
+ * isn't applied here either — multi-course is typically used for broader,
+ * exploratory context.
  */
 export async function retrieveChunksFromCourses(
   courseIds: string[],
   query: string,
   topK: number = DEFAULT_TOP_K,
-  similarityThreshold: number = DEFAULT_SIMILARITY_THRESHOLD,
 ): Promise<RetrievedChunk[]> {
-  if (courseIds.length === 0 || !ragflow.isConfigured()) {
-    return [];
+  if (!courseIds.length) return [];
+  if (!isEmbedConfigured()) return [];
+
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
+
+  const [embedding] = await embedTexts([trimmedQuery]);
+  if (!embedding) return [];
+
+  const candidateK = Math.max(topK * 4, DEFAULT_CANDIDATE_K);
+  const hits = await vectorSearchMulti(embedding, courseIds, candidateK);
+  if (hits.length === 0) return [];
+
+  const rerankInputs = hits.map((h) => ({
+    id: h.id,
+    text:
+      h.chunkType === 'image' ? `[图: ${h.content?.trim() || h.documentName}]` : (h.content ?? ''),
+  }));
+
+  const rerankResults = await rerank(trimmedQuery, rerankInputs, { topK });
+  const byId = new Map(hits.map((h) => [h.id, h]));
+  const out: RetrievedChunk[] = [];
+  for (const r of rerankResults) {
+    const hit = byId.get(r.id);
+    if (!hit) continue;
+    out.push({
+      id: hit.id,
+      documentId: hit.documentId,
+      documentName: hit.documentName,
+      chunkType: hit.chunkType,
+      content: hit.content ?? '',
+      imagePath: hit.imagePath ?? undefined,
+      similarity: r.score,
+      metadata: hit.metadata ?? undefined,
+    });
   }
-
-  // Look up RAGFlow dataset IDs for all courses
-  const courses = await prisma.course.findMany({
-    where: { id: { in: courseIds }, ragflowDatasetId: { not: null } },
-    select: { ragflowDatasetId: true },
-  });
-
-  const datasetIds = courses
-    .map((c) => c.ragflowDatasetId)
-    .filter((id): id is string => id !== null);
-
-  if (datasetIds.length === 0) {
-    return [];
-  }
-
-  // RAGFlow supports searching across multiple datasets in one call
-  const chunks = await ragflow.retrieve({
-    datasetIds,
-    question: query,
-    topK,
-    similarityThreshold,
-  });
-
-  // Resolve local document info
-  const ragflowDocIdSet = new Set(chunks.map((c) => c.documentId));
-  const localDocs =
-    ragflowDocIdSet.size > 0
-      ? await prisma.document.findMany({
-          where: { ragflowDocumentId: { in: [...ragflowDocIdSet] } },
-          select: { id: true, name: true, ragflowDocumentId: true },
-        })
-      : [];
-
-  const docNameMap = new Map<string, { id: string; name: string }>();
-  for (const doc of localDocs) {
-    if (doc.ragflowDocumentId) {
-      docNameMap.set(doc.ragflowDocumentId, { id: doc.id, name: doc.name });
-    }
-  }
-
-  return chunks.map((chunk) => {
-    const localDoc = docNameMap.get(chunk.documentId);
-    return {
-      id: chunk.id,
-      documentId: localDoc?.id || chunk.documentId,
-      documentName: localDoc?.name || chunk.documentName,
-      content: chunk.content,
-      similarity: chunk.similarity,
-    };
-  });
+  return out;
 }
 
 /**
- * Get indexing status summary for a course
+ * Get indexing status summary for a course (preserved from original API).
  */
 export async function getCourseIndexingStatus(courseId: string): Promise<{
   total: number;
@@ -188,18 +206,10 @@ export async function getCourseIndexingStatus(courseId: string): Promise<{
     _count: true,
   });
 
-  const result = {
-    total: 0,
-    indexed: 0,
-    pending: 0,
-    indexing: 0,
-    failed: 0,
-  };
-
+  const result = { total: 0, indexed: 0, pending: 0, indexing: 0, failed: 0 };
   for (const row of counts) {
     const count = row._count;
     result.total += count;
-
     switch (row.indexStatus) {
       case 'indexed':
         result.indexed = count;
@@ -215,6 +225,5 @@ export async function getCourseIndexingStatus(courseId: string): Promise<{
         break;
     }
   }
-
   return result;
 }

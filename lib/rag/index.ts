@@ -1,19 +1,27 @@
 /**
- * RAG Module
+ * RAG Module — self-hosted pgvector backend.
  *
- * Retrieval-Augmented Generation system for course documents.
- * Backed by RAGFlow for document indexing, parsing, and retrieval.
- * Provides document context for classroom generation, PBL projects, and discussions.
+ * Document indexing (chunking + embedding + pgvector storage) and retrieval
+ * (multi-path recall, RRF fusion, rerank) for course documents. Powers
+ * classroom generation, PBL projects, and live discussions.
  */
 
 export { indexDocument, indexCourseDocuments, reindexDocument } from './indexer';
 export { retrieveChunks, retrieveChunksFromCourses, getCourseIndexingStatus } from './retriever';
-export { buildDocumentContext, formatChunksAsContext } from './context-builder';
+export {
+  buildDocumentContext,
+  formatChunksAsContext,
+  getDocumentContextSummary,
+} from './context-builder';
+export { deleteDocumentImages, deleteCourseImages } from './image-storage';
 
 export type {
-  RetrievedChunk,
-  RetrievalOptions,
+  ChunkType,
+  ContextPart,
   DocumentContext,
   IndexStatus,
   IndexingResult,
+  PreparedChunk,
+  RetrievalOptions,
+  RetrievedChunk,
 } from './types';

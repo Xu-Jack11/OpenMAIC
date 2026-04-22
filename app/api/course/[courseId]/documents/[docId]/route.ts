@@ -5,8 +5,7 @@ import { prisma } from '@/lib/server/db';
 import { authenticate, authenticateCourse } from '@/lib/server/auth/middleware';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { NextResponse } from 'next/server';
-import { reindexDocument } from '@/lib/rag';
-import * as ragflow from '@/lib/rag/ragflow-client';
+import { reindexDocument, deleteDocumentImages } from '@/lib/rag';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('Document Detail API');
@@ -66,18 +65,10 @@ export async function DELETE(
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
 
-  // Clean up RAGFlow document
-  if (document.ragflowDocumentId && ragflow.isConfigured()) {
-    const course = await prisma.course.findUnique({
-      where: { id: courseId },
-      select: { ragflowDatasetId: true },
-    });
-    if (course?.ragflowDatasetId) {
-      await ragflow
-        .deleteDocument(course.ragflowDatasetId, [document.ragflowDocumentId])
-        .catch((err) => log.warn('Failed to delete from RAGFlow:', err));
-    }
-  }
+  // Remove any extracted chunk images; chunks themselves cascade via FK.
+  await deleteDocumentImages(courseId, docId).catch((err) =>
+    log.warn('Failed to delete chunk images:', err),
+  );
 
   await prisma.document.delete({ where: { id: docId } });
 
