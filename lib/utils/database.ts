@@ -188,6 +188,26 @@ export function mediaFileKey(stageId: string, elementId: string): string {
   return `${stageId}:${elementId}`;
 }
 
+/**
+ * AgentArtifact table - Markdown documents produced by the generation agent
+ * (course outlines, experiment reports, handouts, ad-hoc notes, etc.)
+ */
+export interface AgentArtifactRecord {
+  id: string; // PK: `${stageId}:${artifactId}`
+  stageId: string; // FK -> stages.id
+  artifactId: string; // slug, e.g. 'outline', 'experiment-report'
+  kind: 'outline' | 'document';
+  title: string;
+  markdown: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Build the compound primary key for agentArtifacts */
+export function agentArtifactKey(stageId: string, artifactId: string): string {
+  return `${stageId}:${artifactId}`;
+}
+
 // ==================== Database Definition ====================
 
 /**
@@ -209,7 +229,7 @@ export interface UserSkillRecord {
 }
 
 const DATABASE_NAME = 'MAIC-Database';
-const _DATABASE_VERSION = 10;
+const _DATABASE_VERSION = 11;
 
 /**
  * MAIC Database Instance
@@ -228,6 +248,7 @@ class MAICDatabase extends Dexie {
   generatedAgents!: EntityTable<GeneratedAgentRecord, 'id'>;
   pluginResults!: EntityTable<PluginResultRecord, 'id'>;
   userSkills!: EntityTable<UserSkillRecord, 'id'>;
+  agentArtifacts!: EntityTable<AgentArtifactRecord, 'id'>;
 
   constructor() {
     super(DATABASE_NAME);
@@ -376,6 +397,23 @@ class MAICDatabase extends Dexie {
       pluginResults: 'id, stageId, pluginId',
       userSkills: 'id, updatedAt',
     });
+
+    // Version 11: Add agentArtifacts table for agent-generated markdown documents
+    this.version(11).stores({
+      stages: 'id, updatedAt',
+      scenes: 'id, stageId, order, [stageId+order]',
+      audioFiles: 'id, createdAt',
+      imageFiles: 'id, createdAt',
+      snapshots: '++id',
+      chatSessions: 'id, stageId, [stageId+createdAt]',
+      playbackState: 'stageId',
+      stageOutlines: 'stageId',
+      mediaFiles: 'id, stageId, [stageId+type]',
+      generatedAgents: 'id, stageId',
+      pluginResults: 'id, stageId, pluginId',
+      userSkills: 'id, updatedAt',
+      agentArtifacts: 'id, stageId, artifactId, [stageId+createdAt]',
+    });
   }
 }
 
@@ -473,6 +511,7 @@ export async function deleteStageWithRelatedData(stageId: string): Promise<void>
       db.mediaFiles,
       db.generatedAgents,
       db.pluginResults,
+      db.agentArtifacts,
     ],
     async () => {
       await db.stages.delete(stageId);
@@ -483,6 +522,7 @@ export async function deleteStageWithRelatedData(stageId: string): Promise<void>
       await db.mediaFiles.where('stageId').equals(stageId).delete();
       await db.generatedAgents.where('stageId').equals(stageId).delete();
       await db.pluginResults.where('stageId').equals(stageId).delete();
+      await db.agentArtifacts.where('stageId').equals(stageId).delete();
     },
   );
 }
@@ -512,6 +552,7 @@ export async function getDatabaseStats() {
     mediaFiles: await db.mediaFiles.count(),
     generatedAgents: await db.generatedAgents.count(),
     pluginResults: await db.pluginResults.count(),
+    agentArtifacts: await db.agentArtifacts.count(),
   };
 }
 
@@ -571,4 +612,54 @@ export async function deleteUserSkill(skillId: string): Promise<void> {
     await db.userSkills.delete(skillId);
     await db.pluginResults.where('pluginId').equals(skillId).delete();
   });
+}
+
+// ==================== Agent Artifact Helpers ====================
+
+/**
+ * Persist (create or overwrite) an agent-generated artifact. The id is derived
+ * from (stageId, artifactId); re-saving the same pair updates the record and
+ * bumps `updatedAt` while keeping the original `createdAt`.
+ */
+export async function saveAgentArtifact(args: {
+  stageId: string;
+  artifactId: string;
+  kind: AgentArtifactRecord['kind'];
+  title: string;
+  markdown: string;
+}): Promise<AgentArtifactRecord> {
+  const id = agentArtifactKey(args.stageId, args.artifactId);
+  const existing = await db.agentArtifacts.get(id);
+  const now = Date.now();
+  const record: AgentArtifactRecord = {
+    id,
+    stageId: args.stageId,
+    artifactId: args.artifactId,
+    kind: args.kind,
+    title: args.title,
+    markdown: args.markdown,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  await db.agentArtifacts.put(record);
+  return record;
+}
+
+/** List artifacts for a stage, newest first. */
+export async function getAgentArtifacts(stageId: string): Promise<AgentArtifactRecord[]> {
+  const rows = await db.agentArtifacts.where('stageId').equals(stageId).toArray();
+  return rows.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** Fetch a single artifact by stage + slug. */
+export async function getAgentArtifact(
+  stageId: string,
+  artifactId: string,
+): Promise<AgentArtifactRecord | null> {
+  const row = await db.agentArtifacts.get(agentArtifactKey(stageId, artifactId));
+  return row ?? null;
+}
+
+export async function deleteAgentArtifact(stageId: string, artifactId: string): Promise<void> {
+  await db.agentArtifacts.delete(agentArtifactKey(stageId, artifactId));
 }
