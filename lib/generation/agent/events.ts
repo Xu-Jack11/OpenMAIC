@@ -88,6 +88,17 @@ export const classroomDoneEvent = baseEvent.extend({
   scenesCount: z.number(),
 });
 
+export const agentArtifactCreatedEvent = baseEvent.extend({
+  type: z.literal('agent.artifact_created'),
+  stageId: z.string(),
+  artifactId: z.string(),
+  kind: z.enum(['outline', 'document']),
+  title: z.string(),
+  /** First ~200 chars of the markdown, for list-view summaries. */
+  markdownPreview: z.string().optional(),
+  byteSize: z.number().int().nonnegative(),
+});
+
 export const generationAgentEventSchema = z.discriminatedUnion('type', [
   agentStartedEvent,
   agentThinkingEvent,
@@ -99,6 +110,7 @@ export const generationAgentEventSchema = z.discriminatedUnion('type', [
   agentFailedEvent,
   agentCheckpointEvent,
   classroomDoneEvent,
+  agentArtifactCreatedEvent,
 ]);
 
 export type GenerationAgentEvent = z.infer<typeof generationAgentEventSchema>;

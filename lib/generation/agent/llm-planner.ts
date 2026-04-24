@@ -44,6 +44,7 @@ import {
   type OrchestratorInput,
   type OrchestratorOutput,
 } from './runtime';
+import { emitArtifact, outlinesToMarkdown } from './artifacts';
 
 const log = createLogger('GenerationAgent:LLMPlanner');
 
@@ -110,10 +111,14 @@ Follow this order. Skip optional steps only if the corresponding flag is off.
 7. (Optional) \`generate_tts\` — call at most once if enableTTS is true, after all scenes are generated.
 8. \`finish\` — call exactly once, last, to terminate. Tool calls after finish are ignored.
 
+## Supplementary documents
+
+Independent of the classroom pipeline, at any point AFTER \`analyze_requirement\` you may call \`write_document\` to produce a standalone markdown document (experiment report, handout, extended reading notes, lab worksheet, etc.) visible to the user in the Files sidebar. Call \`write_document\` whenever the user's requirement asks for a deliverable beyond the slides — do NOT fold the report content into slide bodies. You may call it multiple times with distinct artifact_id values. This does not replace any recipe step.
+
 ## Rules
 
 - Do not call any tool out of order; tools enforce preconditions and will return an error if violated. If an error is returned, read the message and call the prerequisite tool first.
-- Do not call the same tool twice unless the description explicitly says "once per outline".
+- Do not call the same tool twice unless the description explicitly says "once per outline" or "may be called multiple times".
 - Keep your reasoning text short. Prefer making the next tool call over narrating.
 - Always end with \`finish\`.`;
 }
@@ -272,6 +277,13 @@ export function buildTools(toolCtx: ToolBuildContext) {
           null,
         );
         state.outlines = outlines;
+        await emitArtifact(tree, {
+          stageId: input.stageId,
+          artifactId: 'outline',
+          kind: 'outline',
+          title: input.language === 'zh-CN' ? '课程大纲' : 'Course Outline',
+          markdown: outlinesToMarkdown(outlines, input.language),
+        });
         tree.emit({
           type: 'agent.progress',
           pct: 30,
@@ -397,6 +409,44 @@ export function buildTools(toolCtx: ToolBuildContext) {
       },
     }),
 
+    write_document: tool({
+      description:
+        "Write a standalone markdown document visible to the user in the sidebar (e.g. experiment report, handout, extended reading notes). Call whenever the user's requirement asks for a supporting document beyond the classroom slides. May be called multiple times with distinct artifact_id values; reusing the same artifact_id overwrites. Requires analyze_requirement to have been called first so the output is grounded in the audience analysis.",
+      inputSchema: z.object({
+        artifact_id: z
+          .string()
+          .regex(/^[a-z0-9-]{1,40}$/)
+          .describe(
+            'Stable slug for the document (letters, digits, hyphens, 1-40 chars). Example: "experiment-report". Re-using overwrites.',
+          ),
+        title: z
+          .string()
+          .min(1)
+          .max(120)
+          .describe('Human-readable title shown in the Files sidebar row.'),
+        markdown: z
+          .string()
+          .min(1)
+          .max(120_000)
+          .describe(
+            'Full document body in GitHub-flavored markdown. Keep headings/lists clean; tables and code blocks are supported by preview and export.',
+          ),
+      }),
+      execute: async ({ artifact_id, title, markdown }) => {
+        if (state.analysis === undefined) {
+          throw new Error('analyze_requirement must be called before write_document.');
+        }
+        await emitArtifact(tree, {
+          stageId: input.stageId,
+          artifactId: artifact_id,
+          kind: 'document',
+          title,
+          markdown,
+        });
+        return { ok: true, bytes: markdown.length, artifactId: artifact_id };
+      },
+    }),
+
     finish: tool({
       description:
         'Signal that classroom generation is complete. Must be the last tool call. Optionally include a brief reason string (for logging).',
@@ -481,6 +531,7 @@ export const BUILTIN_TOOL_NAMES = [
   'generate_scene',
   'generate_media',
   'generate_tts',
+  'write_document',
   'finish',
 ] as const;
 export type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number];

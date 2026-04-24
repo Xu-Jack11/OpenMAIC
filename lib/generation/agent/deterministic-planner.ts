@@ -26,6 +26,7 @@ import {
   type OrchestratorInput,
   type OrchestratorOutput,
 } from './runtime';
+import { emitArtifact, outlinesToMarkdown } from './artifacts';
 
 const log = createLogger('GenerationAgent:Deterministic');
 
@@ -111,6 +112,14 @@ export async function runDeterministicPlanner(
     ctxBase,
     null,
   );
+
+  await emitArtifact(tree, {
+    stageId: input.stageId,
+    artifactId: 'outline',
+    kind: 'outline',
+    title: input.language === 'zh-CN' ? '课程大纲' : 'Course Outline',
+    markdown: outlinesToMarkdown(outlines, input.language),
+  });
 
   tree.emit({
     type: 'agent.progress',

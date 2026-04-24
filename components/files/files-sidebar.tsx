@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   FileDown,
+  FileText,
   Package,
   Download,
   Eye,
@@ -17,9 +18,12 @@ import { useI18n } from '@/lib/hooks/use-i18n';
 import { useStageStore } from '@/lib/store/stage';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
+import { useAgentArtifactStore, selectArtifactsForStage } from '@/lib/store/agent-artifacts';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
 import { getPluginResult, savePluginResult } from '@/lib/utils/database';
+import { formatByteSize } from '@/lib/utils/format';
 import { PluginDialog } from '@/components/supplementary/plugin-dialog';
+import { ArtifactDialog } from '@/components/files/artifact-dialog';
 import { usePluginStore } from '@/lib/store/plugins';
 import type { GenerationPlugin } from '@/lib/plugins/types';
 import type { Locale } from '@/lib/i18n';
@@ -52,6 +56,19 @@ export function FilesSidebar() {
   const plugins = allPlugins.filter((p) => enabledPluginIds.includes(p.id));
   const [pluginStates, setPluginStates] = useState<Record<string, PluginFileState>>({});
   const [activePlugin, setActivePlugin] = useState<GenerationPlugin | null>(null);
+
+  // Agent artifact state
+  const artifacts = useAgentArtifactStore((s) =>
+    stage ? selectArtifactsForStage(s, stage.id) : [],
+  );
+  const hydrateArtifacts = useAgentArtifactStore((s) => s.hydrateFromDb);
+  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stageId = stage?.id;
+    if (!stageId) return;
+    void hydrateArtifacts(stageId);
+  }, [stage?.id, hydrateArtifacts]);
 
   // Load cached plugin results on mount / when stage changes
   useEffect(() => {
@@ -202,6 +219,37 @@ export function FilesSidebar() {
           </div>
         </div>
 
+        {/* Agent Outputs Section */}
+        {artifacts.length > 0 && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-1">
+              {t('files.agentOutputs')}
+            </div>
+            <div className="space-y-1.5">
+              {artifacts.map((a) => (
+                <button
+                  key={a.artifactId}
+                  onClick={() => setActiveArtifactId(a.artifactId)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/60 active:scale-[0.98] transition-all duration-200 group text-left"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200/50 dark:shadow-amber-900/30 shrink-0">
+                    <FileText className="w-4.5 h-4.5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
+                      {a.title}
+                    </div>
+                    <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+                      {formatByteSize(a.byteSize)}
+                    </div>
+                  </div>
+                  <Eye className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-400 transition-colors shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Plugin Supplements Section */}
         {plugins.length > 0 && (
           <div>
@@ -275,15 +323,24 @@ export function FilesSidebar() {
         )}
 
         {/* Empty state */}
-        {plugins.length === 0 && (
+        {plugins.length === 0 && artifacts.length === 0 && (
           <div className="text-center p-6 opacity-50">
-            <p className="text-xs text-gray-400 dark:text-gray-500">{t('files.supplements')}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {t('files.agentOutputsHint')}
+            </p>
           </div>
         )}
       </div>
 
       {/* Plugin Dialog */}
       <PluginDialog plugin={activePlugin} onClose={() => setActivePlugin(null)} />
+
+      {/* Agent Artifact Dialog */}
+      <ArtifactDialog
+        stageId={activeArtifactId ? (stage?.id ?? null) : null}
+        artifactId={activeArtifactId}
+        onClose={() => setActiveArtifactId(null)}
+      />
     </>
   );
 }

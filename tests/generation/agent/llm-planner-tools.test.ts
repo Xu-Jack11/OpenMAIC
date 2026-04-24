@@ -272,6 +272,52 @@ describe('LLM planner tools — preconditions', () => {
     });
   });
 
+  describe('write_document', () => {
+    it('throws when analyze_requirement has not run', async () => {
+      const { tools } = makeTools();
+      await expect(
+        invoke(tools.write_document, {
+          artifact_id: 'experiment-report',
+          title: 'Experiment Report',
+          markdown: '# Hello',
+        }),
+      ).rejects.toThrow(/analyze_requirement must be called/);
+    });
+
+    it('succeeds after analyze_requirement and returns bytes + artifactId', async () => {
+      const { tools } = makeTools({
+        state: { analysis: { topic: 'x' } as unknown as RequirementAnalysis },
+      });
+      const markdown = '# Report\n\nBody text.';
+      const result = (await invoke(tools.write_document, {
+        artifact_id: 'experiment-report',
+        title: 'Experiment Report',
+        markdown,
+      })) as { ok: boolean; bytes: number; artifactId: string };
+      expect(result.ok).toBe(true);
+      expect(result.bytes).toBe(markdown.length);
+      expect(result.artifactId).toBe('experiment-report');
+    });
+
+    it('rejects invalid artifact_id slugs at schema boundary', () => {
+      // The AI SDK's `tool({ inputSchema })` exposes the zod schema on the tool.
+      const { tools } = makeTools({
+        state: { analysis: { topic: 'x' } as unknown as RequirementAnalysis },
+      });
+      const schema = (
+        tools.write_document as unknown as {
+          inputSchema: { safeParse: (v: unknown) => { success: boolean } };
+        }
+      ).inputSchema;
+      expect(schema.safeParse({ artifact_id: 'Bad ID', title: 't', markdown: 'm' }).success).toBe(
+        false,
+      );
+      expect(schema.safeParse({ artifact_id: 'ok-id', title: 't', markdown: 'm' }).success).toBe(
+        true,
+      );
+    });
+  });
+
   describe('tool set shape', () => {
     it('exposes exactly the declared BUILTIN_TOOL_NAMES', () => {
       const { tools } = makeTools();

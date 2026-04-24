@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { generationAgentEventSchema } from '@/lib/generation/agent/events';
 import { useAgentActivityStore } from '@/lib/store/agent-activity';
+import { useAgentArtifactStore } from '@/lib/store/agent-artifacts';
 
 export type StreamStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error';
 
@@ -31,6 +32,7 @@ const EVENT_TYPES = [
   'agent.failed',
   'agent.checkpoint',
   'classroom.done',
+  'agent.artifact_created',
 ];
 
 export function useAgentActivityStream(jobId: string | null) {
@@ -74,6 +76,9 @@ export function useAgentActivityStream(jobId: string | null) {
         const parsed = generationAgentEventSchema.safeParse(raw);
         if (parsed.success) {
           applyEvent(parsed.data);
+          if (parsed.data.type === 'agent.artifact_created') {
+            useAgentArtifactStore.getState().ingestEvent(parsed.data);
+          }
           if (parsed.data.type === 'classroom.done') {
             es.close();
             setStatus('closed');
