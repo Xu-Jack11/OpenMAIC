@@ -326,6 +326,14 @@ export default function CourseDashboardPage() {
                         {t('course.enterClassroom')}
                       </button>
                     )}
+                    {(c.status === 'generating' || c.status === 'failed') && (
+                      <button
+                        onClick={() => router.push(`/course/${courseId}/classroom/${c.id}`)}
+                        className="text-sm px-3 py-1 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        {t('course.viewProgress')}
+                      </button>
+                    )}
                     {isTeacher() && (
                       <button
                         onClick={() => handleDeleteClassroom(c.id)}

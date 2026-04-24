@@ -4,7 +4,11 @@ import { type NextRequest } from 'next/server';
 import { prisma } from '@/lib/server/db';
 import { authenticate, authenticateCourse } from '@/lib/server/auth/middleware';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
-import { readClassroom, CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
+import {
+  readClassroom,
+  CLASSROOMS_DIR,
+  parseClassroomStorageId,
+} from '@/lib/server/classroom-storage';
 
 export async function GET(
   req: NextRequest,
@@ -20,11 +24,7 @@ export async function GET(
   });
   if (!dbClassroom) return apiError('NOT_FOUND', 404, 'Classroom not found');
 
-  const status = dbClassroom.storageId.startsWith('job:')
-    ? 'generating'
-    : dbClassroom.storageId.startsWith('failed:')
-      ? 'failed'
-      : 'ready';
+  const { status, jobId, contentId } = parseClassroomStorageId(dbClassroom.storageId);
 
   const metadata = {
     id: dbClassroom.id,
@@ -35,16 +35,17 @@ export async function GET(
     language: dbClassroom.language,
     style: dbClassroom.style,
     status,
+    jobId,
     creator: dbClassroom.creator,
     createdAt: dbClassroom.createdAt,
     updatedAt: dbClassroom.updatedAt,
   };
 
-  if (status !== 'ready') {
+  if (!contentId) {
     return apiSuccess({ classroom: metadata, content: null });
   }
 
-  const content = await readClassroom(dbClassroom.storageId);
+  const content = await readClassroom(contentId);
   if (!content) {
     return apiError('NOT_FOUND', 404, 'Classroom content not found on server');
   }
@@ -70,13 +71,13 @@ export async function DELETE(
   });
   if (!dbClassroom) return apiError('NOT_FOUND', 404, 'Classroom not found');
 
-  // Delete filesystem content if it exists
-  if (!dbClassroom.storageId.startsWith('job:') && !dbClassroom.storageId.startsWith('failed:')) {
-    const filePath = path.join(CLASSROOMS_DIR, `${dbClassroom.storageId}.json`);
+  const { contentId } = parseClassroomStorageId(dbClassroom.storageId);
+  if (contentId) {
+    const filePath = path.join(CLASSROOMS_DIR, `${contentId}.json`);
     try {
       await fs.unlink(filePath);
     } catch (err) {
-      // File not found is acceptable — the DB row still needs to be deleted
+      // ENOENT is acceptable — DB row still needs deletion.
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
   }

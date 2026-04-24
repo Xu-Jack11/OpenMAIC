@@ -10,6 +10,7 @@
 'use client';
 
 import { memo, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils/cn';
 import {
   useAgentActivityStream,
@@ -44,7 +45,7 @@ function statusIcon(status: StreamStatus): ReactNode {
 }
 
 const NodeRecursive = memo(function NodeRecursive({ node }: { node: AgentActivityNode }) {
-  const children = useAgentActivityStore((s) => selectChildren(s, node.id));
+  const children = useAgentActivityStore(useShallow((s) => selectChildren(s, node.id)));
   const childCount = children.length;
   return (
     <AgentNodeCard
@@ -81,7 +82,7 @@ export function AgentActivityTree({ jobId, className }: AgentActivityTreeProps) 
   return (
     <div className={cn('w-full space-y-3', className)}>
       {/* Header bar */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-gray-200/60 bg-white/90 py-2 text-xs text-muted-foreground backdrop-blur-md dark:border-gray-700/60 dark:bg-slate-900/80">
         {statusIcon(status)}
         {status === 'connecting' && <span>{t('generation.generation.aiWorking')}...</span>}
         {status === 'open' && (

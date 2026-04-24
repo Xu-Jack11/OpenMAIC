@@ -29,7 +29,7 @@ import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generatio
 import { AgentRevealModal } from '@/components/agent/agent-reveal-modal';
 import { createLogger } from '@/lib/logger';
 import { type GenerationSessionState, ALL_STEPS, getActiveSteps } from './types';
-import { StepVisualizer } from './components/visualizers';
+import { StepVisualizer } from '@/components/generation/step-visualizer';
 import { AgentActivityTree } from '@/components/generation/agent-activity-tree';
 import { useAgentActivityStore } from '@/lib/store/agent-activity';
 

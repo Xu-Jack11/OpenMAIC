@@ -13,11 +13,7 @@ import { SettingsDialog } from '@/components/settings';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useUserProfileStore } from '@/lib/store/user-profile';
-import { nanoid } from 'nanoid';
-import { storePdfBlob } from '@/lib/utils/image-storage';
 import type { SettingsSection } from '@/lib/types/settings';
-import type { UserRequirements } from '@/lib/types/generation';
-import type { GenerationSessionState } from '@/app/(authenticated)/generation-preview/types';
 
 const log = createLogger('CreateClassroomDialog');
 
@@ -135,56 +131,65 @@ export function CreateClassroomDialog({
     setSubmitting(true);
 
     try {
-      const userProfile = useUserProfileStore.getState();
-      const requirements: UserRequirements = {
-        requirement: form.requirement,
-        language: form.language,
-        userNickname: userProfile.nickname || undefined,
-        userBio: userProfile.bio || undefined,
-        webSearch: form.webSearch || undefined,
-      };
-
-      let pdfStorageKey: string | undefined;
-      let pdfFileName: string | undefined;
-      let pdfProviderId: string | undefined;
-      let pdfProviderConfig: { apiKey?: string; baseUrl?: string } | undefined;
+      let pdfContent: { text: string; images: string[] } | undefined;
 
       if (form.pdfFile) {
-        pdfStorageKey = await storePdfBlob(form.pdfFile);
-        pdfFileName = form.pdfFile.name;
-
         const settings = useSettingsStore.getState();
-        pdfProviderId = settings.pdfProviderId;
         const providerCfg = settings.pdfProvidersConfig?.[settings.pdfProviderId];
-        if (providerCfg) {
-          pdfProviderConfig = {
-            apiKey: providerCfg.apiKey,
-            baseUrl: providerCfg.serverBaseUrl || providerCfg.baseUrl,
-          };
+
+        const parseFormData = new FormData();
+        parseFormData.append('file', form.pdfFile);
+        if (settings.pdfProviderId) {
+          parseFormData.append('providerId', settings.pdfProviderId);
         }
+        if (providerCfg?.apiKey?.trim()) {
+          parseFormData.append('apiKey', providerCfg.apiKey);
+        }
+        const baseUrl = providerCfg?.serverBaseUrl || providerCfg?.baseUrl;
+        if (baseUrl?.trim()) {
+          parseFormData.append('baseUrl', baseUrl);
+        }
+
+        const parseRes = await fetch('/api/parse-document', {
+          method: 'POST',
+          body: parseFormData,
+        });
+        const parseJson = await parseRes.json();
+        if (!parseRes.ok || !parseJson.success || !parseJson.data) {
+          throw new Error(parseJson.error || t('generation.pdfParseFailed'));
+        }
+
+        const text = (parseJson.data.text as string | undefined) ?? '';
+        const rawImages = parseJson.data.metadata?.pdfImages as Array<{ src?: string }> | undefined;
+        const images = rawImages
+          ? rawImages.map((img) => img.src ?? '').filter(Boolean)
+          : ((parseJson.data.images as string[] | undefined) ?? []);
+
+        pdfContent = { text, images };
       }
 
-      const sessionState: GenerationSessionState = {
-        sessionId: nanoid(),
-        requirements,
-        pdfText: '',
-        pdfImages: [],
-        imageStorageIds: [],
-        pdfStorageKey,
-        pdfFileName,
-        pdfProviderId,
-        pdfProviderConfig,
-        sceneOutlines: null,
-        currentStep: 'generating',
+      const body = {
+        name: form.requirement.trim().slice(0, 200),
+        requirement: form.requirement.trim(),
+        language: form.language,
+        enableWebSearch: form.webSearch,
+        ...(pdfContent ? { pdfContent } : {}),
       };
 
-      sessionStorage.setItem('generationSession', JSON.stringify(sessionState));
-      sessionStorage.setItem('generationCourseId', courseId);
+      const res = await fetch(`/api/course/${courseId}/classrooms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || t('upload.generateFailed'));
+      }
 
       onOpenChange(false);
-      router.push('/generation-preview');
+      router.push(`/course/${courseId}/classroom/${json.classroomId}`);
     } catch (err) {
-      log.error('Error preparing generation session:', err);
+      log.error('Error starting classroom generation:', err);
       setError(err instanceof Error ? err.message : t('upload.generateFailed'));
     } finally {
       setSubmitting(false);

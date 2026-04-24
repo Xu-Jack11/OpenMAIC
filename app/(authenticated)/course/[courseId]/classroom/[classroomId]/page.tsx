@@ -6,12 +6,34 @@ import { useCourseAuthStore } from '@/lib/store/course-auth';
 import { useStageStore } from '@/lib/store';
 import { useWhiteboardHistoryStore } from '@/lib/store/whiteboard-history';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
+import { useSettingsStore } from '@/lib/store/settings';
+import { saveGeneratedAgents } from '@/lib/orchestration/registry/store';
 import { Stage } from '@/components/stage';
 import { ThemeProvider } from '@/lib/hooks/use-theme';
 import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
+import { ClassroomGenerationProgress } from '@/components/course/classroom-generation-progress';
+import type { ClassroomStatus } from '@/lib/server/classroom-storage';
+import type { Scene, Stage as StageType } from '@/lib/types/stage';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('CourseClassroom');
+
+interface ClassroomDetailResponse {
+  success: boolean;
+  error?: string;
+  classroom: {
+    status: ClassroomStatus;
+    jobId: string | null;
+  };
+  content?: { stage: StageType; scenes: Scene[] } | null;
+}
+
+type ViewState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'generating'; jobId: string }
+  | { kind: 'failed'; jobId: string; message: string }
+  | { kind: 'ready' };
 
 export default function CourseClassroomPage() {
   const params = useParams();
@@ -21,84 +43,100 @@ export default function CourseClassroomPage() {
 
   const { isTeacher } = useCourseAuthStore();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const loadedRef = useRef(false);
+  const [view, setView] = useState<ViewState>({ kind: 'loading' });
+  const hydratedRef = useRef(false);
 
   const loadClassroom = useCallback(async () => {
     try {
       const res = await fetch(`/api/course/${courseId}/classrooms/${classroomId}`);
-      const json = await res.json();
+      const json = (await res.json()) as ClassroomDetailResponse;
 
       if (!json.success) {
-        setError(json.error ?? 'Failed to load classroom');
+        setView({ kind: 'error', message: json.error ?? 'Failed to load classroom' });
         return;
       }
 
       const { classroom, content } = json;
 
       if (classroom.status === 'generating') {
-        setError('This classroom is still being generated. Please check back later.');
+        if (!classroom.jobId) {
+          setView({ kind: 'error', message: 'Classroom is generating but job id is missing' });
+          return;
+        }
+        setView({ kind: 'generating', jobId: classroom.jobId });
         return;
       }
+
       if (classroom.status === 'failed') {
-        setError('Classroom generation failed.');
+        if (!classroom.jobId) {
+          setView({ kind: 'error', message: 'Classroom generation failed.' });
+          return;
+        }
+        setView({
+          kind: 'failed',
+          jobId: classroom.jobId,
+          message: 'Classroom generation failed',
+        });
         return;
       }
+
       if (!content) {
-        setError('Classroom content not available.');
+        setView({ kind: 'error', message: 'Classroom content not available.' });
         return;
       }
 
-      const { stage, scenes } = content;
-      const store = useStageStore.getState();
-      store.setStage(stage);
-      useStageStore.setState({ scenes, currentSceneId: scenes[0]?.id ?? null });
-      store.setCourseContext(courseId, classroomId);
-      log.info('Loaded course classroom:', classroomId);
+      // Refetch after successful generation must not reset stage state.
+      if (!hydratedRef.current) {
+        hydratedRef.current = true;
+        const { stage, scenes } = content;
+        const store = useStageStore.getState();
+        store.setStage(stage);
+        useStageStore.setState({ scenes, currentSceneId: scenes[0]?.id ?? null });
+        store.setCourseContext(courseId, classroomId);
+        log.info('Loaded course classroom:', classroomId);
 
-      // Hydrate server-generated agents if present
-      if (stage.generatedAgentConfigs?.length) {
-        const { saveGeneratedAgents } = await import('@/lib/orchestration/registry/store');
-        const { useSettingsStore } = await import('@/lib/store/settings');
-        const agentIds = await saveGeneratedAgents(stage.id, stage.generatedAgentConfigs);
-        useSettingsStore.getState().setSelectedAgentIds(agentIds);
+        if (stage.generatedAgentConfigs?.length) {
+          const agentIds = await saveGeneratedAgents(stage.id, stage.generatedAgentConfigs);
+          useSettingsStore.getState().setSelectedAgentIds(agentIds);
+        }
       }
+
+      setView({ kind: 'ready' });
     } catch (e) {
       log.error('Failed to load course classroom:', e);
-      setError(e instanceof Error ? e.message : 'Failed to load classroom');
-    } finally {
-      setLoading(false);
+      setView({
+        kind: 'error',
+        message: e instanceof Error ? e.message : 'Failed to load classroom',
+      });
     }
   }, [courseId, classroomId]);
 
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-
-    setLoading(true);
-    setError(null);
+    hydratedRef.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset view on classroom navigation
+    setView({ kind: 'loading' });
 
     const mediaStore = useMediaGenerationStore.getState();
     mediaStore.revokeObjectUrls();
     useMediaGenerationStore.setState({ tasks: {} });
     useWhiteboardHistoryStore.getState().clearHistory();
 
-    loadClassroom();
+    void loadClassroom();
   }, [courseId, classroomId, loadClassroom]);
 
   return (
     <ThemeProvider>
       <MediaStageProvider value={classroomId}>
         <div className="h-screen flex flex-col overflow-hidden">
-          {loading ? (
+          {view.kind === 'loading' && (
             <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
               <p className="text-muted-foreground">Loading classroom...</p>
             </div>
-          ) : error ? (
+          )}
+          {view.kind === 'error' && (
             <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
               <div className="text-center">
-                <p className="text-destructive mb-4">{error}</p>
+                <p className="text-destructive mb-4">{view.message}</p>
                 <button
                   onClick={() => router.back()}
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
@@ -107,9 +145,27 @@ export default function CourseClassroomPage() {
                 </button>
               </div>
             </div>
-          ) : (
-            <Stage readOnly={!isTeacher()} />
           )}
+          {view.kind === 'generating' && (
+            <ClassroomGenerationProgress
+              courseId={courseId}
+              jobId={view.jobId}
+              onSucceeded={() => {
+                void loadClassroom();
+              }}
+            />
+          )}
+          {view.kind === 'failed' && (
+            <ClassroomGenerationProgress
+              courseId={courseId}
+              jobId={view.jobId}
+              initialFailure={{ error: view.message }}
+              onSucceeded={() => {
+                void loadClassroom();
+              }}
+            />
+          )}
+          {view.kind === 'ready' && <Stage readOnly={!isTeacher()} />}
         </div>
       </MediaStageProvider>
     </ThemeProvider>

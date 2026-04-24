@@ -1,11 +1,3 @@
-/**
- * @deprecated Phase E — these step-specific animations are used only by the
- * legacy client-side streaming path (`GenerationPreviewContent`). Agent-mode
- * generation (triggered via `?jobId=xxx`) uses `AgentActivityTree` instead.
- * Remove this file once the legacy path in `classroom-generation.ts` is
- * retired and the client-side generation flow is migrated to the agent
- * orchestrator.
- */
 'use client';
 
 import { useState, useEffect } from 'react';

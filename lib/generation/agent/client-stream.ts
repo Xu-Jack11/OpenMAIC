@@ -14,6 +14,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { generationAgentEventSchema } from '@/lib/generation/agent/events';
 import { useAgentActivityStore } from '@/lib/store/agent-activity';
 
@@ -103,9 +104,11 @@ export function useAgentActivityStream(jobId: string | null) {
  * re-render in the consuming component.
  */
 export function useAgentActivity() {
-  return useAgentActivityStore((s) => ({
-    nodes: s.nodes,
-    rootIds: s.rootIds,
-    classroomResult: s.classroomResult,
-  }));
+  return useAgentActivityStore(
+    useShallow((s) => ({
+      nodes: s.nodes,
+      rootIds: s.rootIds,
+      classroomResult: s.classroomResult,
+    })),
+  );
 }

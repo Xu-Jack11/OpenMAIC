@@ -9,15 +9,9 @@ import {
   createClassroomGenerationJob,
   readClassroomGenerationJob,
 } from '@/lib/server/classroom-job-store';
-import { buildRequestOrigin } from '@/lib/server/classroom-storage';
+import { buildRequestOrigin, parseClassroomStorageId } from '@/lib/server/classroom-storage';
 
 export const maxDuration = 30;
-
-function classroomStatus(storageId: string): 'ready' | 'generating' | 'failed' {
-  if (storageId.startsWith('job:')) return 'generating';
-  if (storageId.startsWith('failed:')) return 'failed';
-  return 'ready';
-}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
@@ -38,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ cour
       sceneCount: c.sceneCount,
       language: c.language,
       style: c.style,
-      status: classroomStatus(c.storageId),
+      status: parseClassroomStorageId(c.storageId).status,
       creator: c.creator,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,

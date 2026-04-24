@@ -45,6 +45,28 @@ export function isValidClassroomId(id: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(id);
 }
 
+const JOB_PREFIX = 'job:';
+const FAILED_PREFIX = 'failed:';
+
+export type ClassroomStatus = 'ready' | 'generating' | 'failed';
+
+export interface ParsedClassroomStorageId {
+  status: ClassroomStatus;
+  jobId: string | null;
+  /** Filesystem key for `readClassroom` — only set when status === 'ready'. */
+  contentId: string | null;
+}
+
+export function parseClassroomStorageId(storageId: string): ParsedClassroomStorageId {
+  if (storageId.startsWith(JOB_PREFIX)) {
+    return { status: 'generating', jobId: storageId.slice(JOB_PREFIX.length), contentId: null };
+  }
+  if (storageId.startsWith(FAILED_PREFIX)) {
+    return { status: 'failed', jobId: storageId.slice(FAILED_PREFIX.length), contentId: null };
+  }
+  return { status: 'ready', jobId: null, contentId: storageId };
+}
+
 export async function readClassroom(id: string): Promise<PersistedClassroomData | null> {
   const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
   try {
