@@ -192,16 +192,22 @@ export function mediaFileKey(stageId: string, elementId: string): string {
  * AgentArtifact table - Markdown documents produced by the generation agent
  * (course outlines, experiment reports, handouts, ad-hoc notes, etc.)
  */
+export type AgentArtifactKind = 'outline' | 'document';
+
 export interface AgentArtifactRecord {
   id: string; // PK: `${stageId}:${artifactId}`
   stageId: string; // FK -> stages.id
   artifactId: string; // slug, e.g. 'outline', 'experiment-report'
-  kind: 'outline' | 'document';
+  kind: AgentArtifactKind;
   title: string;
   markdown: string;
   createdAt: number;
   updatedAt: number;
 }
+
+export type AgentArtifactSummary = Omit<AgentArtifactRecord, 'markdown'> & {
+  byteSize: number;
+};
 
 /** Build the compound primary key for agentArtifacts */
 export function agentArtifactKey(stageId: string, artifactId: string): string {
@@ -624,7 +630,7 @@ export async function deleteUserSkill(skillId: string): Promise<void> {
 export async function saveAgentArtifact(args: {
   stageId: string;
   artifactId: string;
-  kind: AgentArtifactRecord['kind'];
+  kind: AgentArtifactKind;
   title: string;
   markdown: string;
 }): Promise<AgentArtifactRecord> {
@@ -649,6 +655,18 @@ export async function saveAgentArtifact(args: {
 export async function getAgentArtifacts(stageId: string): Promise<AgentArtifactRecord[]> {
   const rows = await db.agentArtifacts.where('stageId').equals(stageId).toArray();
   return rows.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Metadata-only listing — omits the `markdown` payload so the sidebar can show
+ * dozens of rows without dragging hundreds of KB of document bodies into
+ * memory. Full markdown is fetched on demand by {@link getAgentArtifact}.
+ */
+export async function getAgentArtifactSummaries(stageId: string): Promise<AgentArtifactSummary[]> {
+  const rows = await db.agentArtifacts.where('stageId').equals(stageId).toArray();
+  return rows
+    .map(({ markdown, ...rest }) => ({ ...rest, byteSize: markdown.length }))
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /** Fetch a single artifact by stage + slug. */

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useAgentArtifactStore, type AgentArtifactEntry } from '@/lib/store/agent-artifacts';
 import { exportArtifact, markdownToExportableDocument } from '@/lib/export/artifact-export';
+import { formatByteSize } from '@/lib/utils/format';
 import type { ExportFormat } from '@/lib/export/document/types';
 import type { Locale } from '@/lib/i18n';
 import type { ExportableDocument, DocumentSection } from '@/lib/export/document/types';
@@ -222,10 +223,4 @@ function headingClassForLevel(level: 1 | 2 | 3 | 4): string {
     default:
       return 'text-sm font-medium text-gray-700 dark:text-gray-300';
   }
-}
-
-function formatByteSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }

@@ -1,19 +1,18 @@
 /**
  * Multi-format export for agent-generated markdown artifacts.
  *
- * The existing document export pipeline (`lib/export/document/`) works on a
- * structured `ExportableDocument`; this module bridges raw markdown (what the
- * agent produces) to that shape, then dispatches to the appropriate builder.
+ * The existing pipeline (`lib/export/document/`) operates on a structured
+ * `ExportableDocument`; this module bridges raw markdown (what the agent
+ * produces) into that shape and dispatches to the appropriate builder.
  *
- * Supported formats: `.md` (raw), `.docx` (via `docx` package), `.pdf` (via
- * jsPDF). The builders are imported lazily inside each branch so Next.js SSR
- * does not pull in `window`/`document`-dependent code during the build.
+ * The builders are imported lazily inside each branch — `html2pdf`, `docx`,
+ * and `file-saver` touch `window`/`document`, so keeping them off the static
+ * import graph keeps Next.js SSR off the hot path.
  *
- * Keep the parser intentionally narrow: the agent's markdown stays close to
- * the common subset (ATX headings, bulleted + numbered lists, pipe tables,
- * prose paragraphs). Features beyond that (code fences, blockquotes, inline
- * emphasis spans) fall through as plain paragraphs — acceptable fidelity loss
- * for classroom artifacts, where headings + lists + tables carry the meaning.
+ * The markdown parser handles ATX headings, bulleted + numbered lists, pipe
+ * tables and prose. Richer syntax (fenced code, blockquotes, inline emphasis)
+ * falls through as plain paragraphs — acceptable for classroom artifacts,
+ * where headings + lists + tables carry the meaning.
  */
 
 import type {
@@ -34,11 +33,12 @@ export function slugifyTitle(title: string, fallback = 'artifact'): string {
   return cleaned.length > 0 ? cleaned.slice(0, 60) : fallback;
 }
 
+type ListField = 'bulletPoints' | 'numberedItems';
+
 /**
  * Parse a markdown string into the format-agnostic `ExportableDocument`
- * shape expected by the shared builders. The first `# Heading` is consumed as
- * the document title; subsequent headings open new sections. Content under a
- * heading is bucketed by list type.
+ * shape. First `#` heading becomes the document title; subsequent headings
+ * open new sections. Content under a heading is bucketed by list type.
  */
 export function markdownToExportableDocument(
   markdown: string,
@@ -54,22 +54,30 @@ export function markdownToExportableDocument(
   let paragraphBuffer: string[] = [];
   let tableBuffer: string[] = [];
 
+  const ensureCurrent = (): DocumentSection => {
+    if (!current) {
+      current = { heading: fallbackTitle, level: 2 };
+      sections.push(current);
+    }
+    return current;
+  };
+
+  const appendToList = (field: ListField, text: string) => {
+    const section = ensureCurrent();
+    (section[field] ??= []).push(text);
+  };
+
   const flushParagraph = () => {
     if (paragraphBuffer.length === 0) return;
     const text = paragraphBuffer.join(' ').trim();
     paragraphBuffer = [];
     if (!text) return;
-    if (!current) {
-      current = { heading: fallbackTitle, level: 2, paragraphs: [text] };
-      sections.push(current);
-    } else {
-      (current.paragraphs ??= []).push(text);
-    }
+    const section = ensureCurrent();
+    (section.paragraphs ??= []).push(text);
   };
 
   const flushTable = () => {
     if (tableBuffer.length < 2) {
-      // Not a valid table — treat each line as a paragraph.
       for (const line of tableBuffer) paragraphBuffer.push(line);
       tableBuffer = [];
       flushParagraph();
@@ -82,24 +90,15 @@ export function markdownToExportableDocument(
         .split('|')
         .map((c) => c.trim());
     const headers = parseRow(tableBuffer[0]);
-    // tableBuffer[1] is the separator --- row; skip it.
     const rows = tableBuffer.slice(2).map(parseRow);
     tableBuffer = [];
-    if (!current) {
-      current = { heading: fallbackTitle, level: 2, table: { headers, rows } };
-      sections.push(current);
-    } else if (!current.table) {
-      current.table = { headers, rows };
-    } else {
-      // Already has a table — open a fresh subsection.
-      const nextLevel = Math.min(4, current.level + 1) as 2 | 3 | 4;
-      const sub: DocumentSection = {
-        heading: '',
-        level: nextLevel,
-        table: { headers, rows },
-      };
-      (current.children ??= []).push(sub);
+    const section = ensureCurrent();
+    if (!section.table) {
+      section.table = { headers, rows };
+      return;
     }
+    const nextLevel = Math.min(4, section.level + 1) as 2 | 3 | 4;
+    (section.children ??= []).push({ heading: '', level: nextLevel, table: { headers, rows } });
   };
 
   const isTableLine = (line: string) => /^\s*\|.*\|\s*$/.test(line);
@@ -109,7 +108,6 @@ export function markdownToExportableDocument(
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '');
 
-    // Table collection (contiguous pipe rows)
     if (isTableLine(line) || (tableBuffer.length === 1 && isTableSeparator(line))) {
       flushParagraph();
       tableBuffer.push(line);
@@ -118,60 +116,43 @@ export function markdownToExportableDocument(
       flushTable();
     }
 
-    // Blank line — paragraph break.
     if (line.trim() === '') {
       flushParagraph();
       continue;
     }
 
-    // ATX heading.
     const headingMatch = /^(#{1,6})\s+(.+?)\s*#*$/.exec(line);
     if (headingMatch) {
       flushParagraph();
-      const level = Math.min(4, headingMatch[1].length) as 1 | 2 | 3 | 4;
+      const rawLevel = headingMatch[1].length;
       const text = headingMatch[2].trim();
-      if (level === 1 && sections.length === 0 && !current) {
+      if (rawLevel === 1 && sections.length === 0 && !current) {
         title = text || fallbackTitle;
         continue;
       }
-      current = { heading: text, level: (level === 1 ? 2 : level) as 2 | 3 | 4 };
+      const level = (rawLevel === 1 ? 2 : Math.min(4, rawLevel)) as 2 | 3 | 4;
+      current = { heading: text, level };
       sections.push(current);
       continue;
     }
 
-    // Bullet list item.
     const bulletMatch = /^\s*[-*+]\s+(.*)$/.exec(line);
     if (bulletMatch) {
       flushParagraph();
-      const text = stripInline(bulletMatch[1]);
-      if (!current) {
-        current = { heading: fallbackTitle, level: 2, bulletPoints: [text] };
-        sections.push(current);
-      } else {
-        (current.bulletPoints ??= []).push(text);
-      }
+      appendToList('bulletPoints', stripInline(bulletMatch[1]));
       continue;
     }
 
-    // Numbered list item.
     const numberedMatch = /^\s*\d+\.\s+(.*)$/.exec(line);
     if (numberedMatch) {
       flushParagraph();
-      const text = stripInline(numberedMatch[1]);
-      if (!current) {
-        current = { heading: fallbackTitle, level: 2, numberedItems: [text] };
-        sections.push(current);
-      } else {
-        (current.numberedItems ??= []).push(text);
-      }
+      appendToList('numberedItems', stripInline(numberedMatch[1]));
       continue;
     }
 
-    // Regular prose.
     paragraphBuffer.push(stripInline(line.trim()));
   }
 
-  // Drain trailing buffers.
   if (tableBuffer.length > 0) flushTable();
   flushParagraph();
 
@@ -185,7 +166,6 @@ export function markdownToExportableDocument(
   };
 }
 
-/** Strip a minimal set of inline markdown syntax so DOCX/PDF text is clean. */
 function stripInline(s: string): string {
   return s
     .replace(/\*\*(.+?)\*\*/g, '$1')
@@ -195,9 +175,9 @@ function stripInline(s: string): string {
 }
 
 /**
- * Convert an artifact (title + markdown) to the requested format and trigger a
- * browser download. Uses the shared builders in `lib/export/document/*` so the
- * DOCX/PDF output matches the style of other exports in the app.
+ * Export an artifact to the requested format and trigger a browser download.
+ * Reuses the shared builders in `lib/export/document/*` so DOCX/PDF styling
+ * matches the rest of the app.
  */
 export async function exportArtifact(
   args: { title: string; markdown: string; locale: Locale },
@@ -205,24 +185,29 @@ export async function exportArtifact(
 ): Promise<void> {
   const { title, markdown, locale } = args;
   const filename = slugifyTitle(title);
-  let blob: Blob;
-  let ext: string;
 
-  if (format === 'markdown') {
-    blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-    ext = 'md';
-  } else if (format === 'docx') {
-    const doc = markdownToExportableDocument(markdown, locale, title);
-    const { buildDocx } = await import('@/lib/export/document/docx-builder');
-    blob = await buildDocx(doc);
-    ext = 'docx';
-  } else {
-    const doc = markdownToExportableDocument(markdown, locale, title);
-    const { buildPdf } = await import('@/lib/export/document/pdf-builder');
-    blob = buildPdf(doc);
-    ext = 'pdf';
-  }
-
+  const { blob, ext } = await buildBlob(markdown, locale, title, format);
   const { saveAs } = await import('file-saver');
   saveAs(blob, `${filename}.${ext}`);
+}
+
+async function buildBlob(
+  markdown: string,
+  locale: Locale,
+  title: string,
+  format: ExportFormat,
+): Promise<{ blob: Blob; ext: string }> {
+  if (format === 'markdown') {
+    return {
+      blob: new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+      ext: 'md',
+    };
+  }
+  const doc = markdownToExportableDocument(markdown, locale, title);
+  if (format === 'docx') {
+    const { buildDocx } = await import('@/lib/export/document/docx-builder');
+    return { blob: await buildDocx(doc), ext: 'docx' };
+  }
+  const { buildPdf } = await import('@/lib/export/document/pdf-builder');
+  return { blob: buildPdf(doc), ext: 'pdf' };
 }

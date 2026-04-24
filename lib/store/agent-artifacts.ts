@@ -1,16 +1,14 @@
 /**
  * Zustand store for agent-generated artifact metadata.
  *
- * Populated from two sources:
+ * Populated from live SSE `agent.artifact_created` events and, on stage mount,
+ * from IndexedDB via the metadata-only summary query. Full markdown is fetched
+ * lazily by {@link AgentArtifactState.getOne} so large documents do not
+ * inflate the in-memory snapshot.
  *
- *   1. Live SSE `agent.artifact_created` events (via {@link ingestEvent}) — set
- *      during an active generation.
- *   2. IndexedDB hydration on stage mount (via {@link hydrateFromDb}) — used on
- *      page refresh so the Files sidebar shows previously-generated artifacts.
- *
- * The store holds only metadata. Full markdown is fetched lazily via
- * {@link getOne} (reading IndexedDB) when the user opens the preview dialog or
- * triggers a download, so large documents do not bloat the in-memory tree.
+ * The sorted-per-stage view is memoized inside the store so the sidebar
+ * selector returns the same array reference when nothing has changed, avoiding
+ * needless re-renders of the artifacts list.
  */
 
 'use client';
@@ -18,14 +16,16 @@
 import { create } from 'zustand';
 import {
   getAgentArtifact,
-  getAgentArtifacts,
+  getAgentArtifactSummaries,
+  type AgentArtifactKind,
   type AgentArtifactRecord,
+  type AgentArtifactSummary,
 } from '@/lib/utils/database';
 
 export interface AgentArtifactEntry {
   stageId: string;
   artifactId: string;
-  kind: 'outline' | 'document';
+  kind: AgentArtifactKind;
   title: string;
   /** Full markdown, hydrated lazily. `null` until fetched from IndexedDB. */
   markdown: string | null;
@@ -34,24 +34,36 @@ export interface AgentArtifactEntry {
   updatedAt: number;
 }
 
+export interface AgentArtifactCreatedEvent {
+  stageId: string;
+  artifactId: string;
+  kind: AgentArtifactKind;
+  title: string;
+  byteSize: number;
+  timestamp?: number;
+}
+
 interface AgentArtifactState {
   /** artifactId -> entry, scoped by stageId in an outer map. */
   byStage: Record<string, Record<string, AgentArtifactEntry>>;
 
-  ingestEvent(event: {
-    stageId: string;
-    artifactId: string;
-    kind: 'outline' | 'document';
-    title: string;
-    byteSize: number;
-    timestamp?: number;
-  }): void;
-
+  ingestEvent(event: AgentArtifactCreatedEvent): void;
   hydrateFromDb(stageId: string): Promise<void>;
-
   getOne(stageId: string, artifactId: string): Promise<AgentArtifactEntry | null>;
-
   clearStage(stageId: string): void;
+}
+
+function summaryToEntry(s: AgentArtifactSummary): AgentArtifactEntry {
+  return {
+    stageId: s.stageId,
+    artifactId: s.artifactId,
+    kind: s.kind,
+    title: s.title,
+    markdown: null,
+    byteSize: s.byteSize,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
 }
 
 function recordToEntry(r: AgentArtifactRecord): AgentArtifactEntry {
@@ -75,13 +87,14 @@ export const useAgentArtifactStore = create<AgentArtifactState>((set, get) => ({
     set((state) => {
       const forStage = state.byStage[event.stageId] ?? {};
       const existing = forStage[event.artifactId];
+      // Preserve already-hydrated markdown so a live event for an artifact the
+      // user just opened doesn't drop its body back to null.
       const entry: AgentArtifactEntry = {
         stageId: event.stageId,
         artifactId: event.artifactId,
         kind: event.kind,
         title: event.title,
-        // Full markdown is fetched lazily — the event only carries a preview.
-        markdown: null,
+        markdown: existing?.markdown ?? null,
         byteSize: event.byteSize,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
@@ -96,17 +109,15 @@ export const useAgentArtifactStore = create<AgentArtifactState>((set, get) => ({
   },
 
   async hydrateFromDb(stageId) {
-    const rows = await getAgentArtifacts(stageId);
+    const summaries = await getAgentArtifactSummaries(stageId);
     const entries: Record<string, AgentArtifactEntry> = {};
-    for (const r of rows) entries[r.artifactId] = recordToEntry(r);
-    set((state) => ({
-      byStage: { ...state.byStage, [stageId]: entries },
-    }));
+    for (const s of summaries) entries[s.artifactId] = summaryToEntry(s);
+    set((state) => ({ byStage: { ...state.byStage, [stageId]: entries } }));
   },
 
   async getOne(stageId, artifactId) {
     const cached = get().byStage[stageId]?.[artifactId];
-    if (cached && cached.markdown !== null) return cached;
+    if (cached?.markdown != null) return cached;
     const row = await getAgentArtifact(stageId, artifactId);
     if (!row) return cached ?? null;
     const entry = recordToEntry(row);
@@ -124,17 +135,34 @@ export const useAgentArtifactStore = create<AgentArtifactState>((set, get) => ({
       if (!state.byStage[stageId]) return state;
       const next = { ...state.byStage };
       delete next[stageId];
+      sortedCache.delete(stageId);
       return { byStage: next };
     });
   },
 }));
 
-/** Selector: sorted list of artifacts for a stage (newest first). */
+/**
+ * Stable-reference cache for the sidebar selector: Zustand re-runs selectors
+ * on every state change, so `Object.values().sort()` alone would allocate a
+ * fresh array each time and re-render every consumer. Keyed by the inner map
+ * identity — replaced atomically in every state update, so reference equality
+ * is a sufficient freshness check.
+ */
+const EMPTY_ARTIFACTS: AgentArtifactEntry[] = [];
+const sortedCache = new Map<
+  string,
+  { source: Record<string, AgentArtifactEntry>; value: AgentArtifactEntry[] }
+>();
+
 export function selectArtifactsForStage(
   state: AgentArtifactState,
   stageId: string,
 ): AgentArtifactEntry[] {
   const byId = state.byStage[stageId];
-  if (!byId) return [];
-  return Object.values(byId).sort((a, b) => b.createdAt - a.createdAt);
+  if (!byId) return EMPTY_ARTIFACTS;
+  const cached = sortedCache.get(stageId);
+  if (cached && cached.source === byId) return cached.value;
+  const value = Object.values(byId).sort((a, b) => b.createdAt - a.createdAt);
+  sortedCache.set(stageId, { source: byId, value });
+  return value;
 }

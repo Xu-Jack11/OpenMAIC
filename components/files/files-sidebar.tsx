@@ -21,6 +21,7 @@ import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useAgentArtifactStore, selectArtifactsForStage } from '@/lib/store/agent-artifacts';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
 import { getPluginResult, savePluginResult } from '@/lib/utils/database';
+import { formatByteSize } from '@/lib/utils/format';
 import { PluginDialog } from '@/components/supplementary/plugin-dialog';
 import { ArtifactDialog } from '@/components/files/artifact-dialog';
 import { usePluginStore } from '@/lib/store/plugins';
@@ -342,10 +343,4 @@ export function FilesSidebar() {
       />
     </>
   );
-}
-
-function formatByteSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
